@@ -283,7 +283,9 @@ advisor that no longer has the thread. Re-establish context (or `reset` and star
 
 - [Bun](https://bun.sh)
 - A working Codex login (`codex login`, or set `OPENAI_API_KEY`). `codex-acp` is
-  fetched on demand via `bunx`; install it for speed if you prefer.
+  fetched on demand via `bunx`, pinned to an exact version (it releases near-daily
+  and drives Codex's experimental `codex app-server` protocol underneath — the pin
+  keeps both sides in lockstep); bump the version in `src/config.ts` deliberately.
 - For the Grok tools (`ask_grok`, `grok_reply`, `grok_generate`) and Grok's seat
   on the council: the [Grok CLI](https://x.ai) on your `PATH` and a working login
   (`grok login`) with available usage.
@@ -401,8 +403,8 @@ workspace env var.
 |----------|---------|---------|
 | `MAGI_COUNCIL_WORKSPACE` | cwd | Absolute path the members are scoped to; the base for every guardian check. |
 | `MAGI_COUNCIL_EXCLUDE` | (auto) | Force the host member to exclude (`claude`\|`codex`\|`grok`). Wins over clientInfo detection; recommended for non-Claude hosts. |
-| `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` | `bunx @agentclientprotocol/claude-agent-acp` | How to launch Claude's ACP server (used only when Claude isn't the host). |
-| `MAGI_COUNCIL_CODEX_ACP_COMMAND` | `bunx @agentclientprotocol/codex-acp` | How to launch Codex's ACP server. |
+| `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` | `bunx @agentclientprotocol/claude-agent-acp@0.55.0` | How to launch Claude's ACP server (used only when Claude isn't the host). |
+| `MAGI_COUNCIL_CODEX_ACP_COMMAND` | `bunx @agentclientprotocol/codex-acp@1.1.0` | How to launch Codex's ACP server. |
 | `MAGI_COUNCIL_GROK_ACP_COMMAND` | `grok agent stdio` | How to launch Grok's ACP server. |
 | `MAGI_COUNCIL_ALLOW_EXTERNAL_READS` | off | Let a member read outside the workspace + use network fetch. |
 | `MAGI_COUNCIL_ALLOW_WRITES` | off | Let a member edit/delete/move files inside the workspace. |

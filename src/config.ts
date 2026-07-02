@@ -104,7 +104,15 @@ function excludeOverride(): MemberId | undefined {
   return v && (MEMBER_IDS as string[]).includes(v) ? (v as MemberId) : undefined;
 }
 
-/** Build the {@link Config} from environment variables. */
+/**
+ * Build the {@link Config} from environment variables.
+ *
+ * The npm-fetched adapters are pinned to exact versions so a fresh `bunx` can't
+ * silently pick up last night's publish (both adapters release near-daily); bump
+ * them deliberately. Each pin also fixes the member's protocol peer: codex-acp
+ * spawns the `codex app-server` from its own bundled `@openai/codex`, keeping the
+ * adapter and Codex's experimental app-server protocol moving in lockstep.
+ */
 export function loadConfig(): Config {
   return {
     claude: memberSpec(
@@ -112,7 +120,7 @@ export function loadConfig(): Config {
       "Claude",
       "Claude",
       "MAGI_COUNCIL_CLAUDE_ACP_COMMAND",
-      ["bunx", "@agentclientprotocol/claude-agent-acp"],
+      ["bunx", "@agentclientprotocol/claude-agent-acp@0.55.0"],
       "ensure Claude is authenticated (claude-agent-acp uses your Claude login or ANTHROPIC_API_KEY)",
     ),
     codex: memberSpec(
@@ -120,7 +128,7 @@ export function loadConfig(): Config {
       "Codex",
       "GPT-5/Codex",
       "MAGI_COUNCIL_CODEX_ACP_COMMAND",
-      ["bunx", "@agentclientprotocol/codex-acp"],
+      ["bunx", "@agentclientprotocol/codex-acp@1.1.0"],
       "run `/codex:setup` or `codex login`",
     ),
     grok: memberSpec(
