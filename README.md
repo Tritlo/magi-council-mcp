@@ -69,7 +69,7 @@ on its live context. Delegates report back: outcome, files changed, verification
 | `permit` | allow/deny a permission a member or delegate raised mid-turn, then resume it (pass `member`, plus `delegate` for a delegate session) |
 | `reset` | drop **all** members' accumulated context, dismiss all delegates, and start fresh sessions |
 | `status` | report the resolved host, the active council, live delegates, and each session's health |
-| `available_councilors` | start active members if needed and report ACP model **and permission-mode** selector values |
+| `available_councilors` | start active members if needed and report ACP model, reasoning-effort, **and permission-mode** selector values |
 
 All tools are **advisory** — the members answer, you decide. A member's direct
 tools (`ask_*`/`*_reply`) appear **only when that member isn't the host**; the
@@ -128,11 +128,11 @@ forfeits the accumulated "collaborator" memory, so it's opt-in; the default reus
 the persistent sessions. (`fresh` is the lightweight end of the council-memory
 trade-off; the durable other end is the proposed `MAGI.md`, ADR 0011.)
 
-### Model selection
+### Model and effort selection
 
-Call **`available_councilors`** to see the ACP model selector values reported by
-the active members. Use the value at the start of each model row, not the display
-label. For example, Claude may report values like:
+Call **`available_councilors`** to see the ACP model and reasoning-effort selector
+values reported by the active members. Use the value at the start of each choice
+row, not the display label. For example, Claude may report model values like:
 
 ```text
 default
@@ -142,31 +142,35 @@ sonnet
 haiku
 ```
 
-Then pass **`models`** to choose per-member models for a council fan-out:
+Then pass **`models`** and/or **`efforts`** to choose per-member models and
+reasoning efforts for a council fan-out:
 
 ```json
 {
   "members": ["claude"],
   "models": { "claude": "opus[1m]" },
+  "efforts": { "claude": "high" },
   "question": "Review this risky design decision."
 }
 ```
 
-Single-advisor tools take **`model`** instead:
+Single-advisor tools take **`model`** and **`effort`** instead:
 
 ```json
 {
   "model": "sonnet",
+  "effort": "low",
   "question": "Give me a quick second opinion."
 }
 ```
 
-Model selection is ACP session-level. On persistent sessions it remains until
-changed or `reset`; with `fresh`, it applies only to that throwaway session. If a
-member does not report a model selector, or you pass an unavailable value, the tool
-returns a readable member-specific error instead of guessing a fallback. Use Opus
-for high-leverage reviews; keep Fable/Sonnet/Haiku for routine checks so the
-council does not silently eat the expensive budget.
+Model and effort selection are ACP session-level. On persistent sessions they
+remain until changed or `reset`; with `fresh`, they apply only to that throwaway
+session. If a member does not report the requested selector, or you pass an
+unavailable value, the tool returns a readable member-specific error instead of
+guessing a fallback. Use Opus/high effort for high-leverage reviews; keep
+Fable/Sonnet/Haiku and lower effort for routine checks so the council does not
+silently eat the expensive budget.
 
 It runs members **concurrently** and **atomically** — every advisor's turn fans out
 at once (each on its own session), rendered back in member order, as a single tool
@@ -189,7 +193,7 @@ council is aware of the capability and will suggest it rather than do it.
 
 Members expose their own permission modes over ACP (codex: `read-only` / `agent` /
 `agent-full-access`; claude: `auto` / `default` / `acceptEdits` / …; grok: none),
-discovered at session start like models — `available_councilors` lists them.
+discovered at session start like models and efforts — `available_councilors` lists them.
 **Advisor sessions are pinned to restricted modes** (codex → `read-only`, claude →
 `default`) so an agent's permissive default can't self-approve writes behind the
 guardian's back; if a pin can't apply, `status` shows a ⚠️ warning. **Delegate
@@ -432,7 +436,7 @@ src/config.ts       env → Config + 3 per-member MemberSpecs + host-exclude ove
 src/permissions.ts  guardianDecision — the pure permission policy
 src/council.ts      pure council-selection logic (selectCouncil)
 src/prompts.ts      host-parameterized prompts per tool (Codex/Grok/Claude, magi, generate)
-src/session.ts      AcpSession — ACP client: spawn a member, model config, persistent session, streaming ask()
+src/session.ts      AcpSession — ACP client: spawn a member, selector config, persistent session, streaming ask()
 src/reset.ts        per-workspace reset-nonce path (shared by server + hook)
 src/log.ts          per-turn debug log (stderr summary + optional JSONL file)
 src/index.ts        MCP server: 3 member sessions, host detection + tool gating, the Magi council, delegates

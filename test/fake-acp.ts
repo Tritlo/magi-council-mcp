@@ -16,6 +16,7 @@ import {
   PROTOCOL_VERSION,
   type Agent,
   type RequestPermissionRequest,
+  type SessionConfigOption,
 } from "@agentclientprotocol/sdk";
 
 const scenarioFlag = process.argv.indexOf("--scenario");
@@ -32,6 +33,42 @@ const stream = ndJsonStream(
 
 let cancelled = false;
 let sessionCount = 0;
+let configOptions: SessionConfigOption[] = [
+  {
+    id: "model",
+    name: "Model",
+    type: "select",
+    category: "model",
+    currentValue: "default",
+    options: [
+      { value: "default", name: "Default" },
+      { value: "fast", name: "Fast" },
+    ],
+  },
+  {
+    id: "mode",
+    name: "Mode",
+    type: "select",
+    category: "mode",
+    currentValue: "default",
+    options: [
+      { value: "default", name: "Default" },
+      { value: "agent", name: "Agent" },
+    ],
+  },
+  {
+    id: "thought-level",
+    name: "Reasoning effort",
+    type: "select",
+    category: "thought_level",
+    currentValue: "medium",
+    options: [
+      { value: "low", name: "Low" },
+      { value: "medium", name: "Medium" },
+      { value: "high", name: "High" },
+    ],
+  },
+];
 
 new AgentSideConnection((conn): Agent => {
   return {
@@ -43,7 +80,15 @@ new AgentSideConnection((conn): Agent => {
       // Unique per session, like real ACP agents — a respawn must not reuse an id
       // (so a stale child's late messages are distinguishable from the new session).
       sessionCount += 1;
-      return { sessionId: `fake-session-${process.pid}-${sessionCount}` };
+      return { sessionId: `fake-session-${process.pid}-${sessionCount}`, configOptions };
+    },
+    async setSessionConfigOption(params) {
+      configOptions = configOptions.map((option) =>
+        option.id === params.configId && option.type === "select" && typeof params.value === "string"
+          ? { ...option, currentValue: params.value }
+          : option,
+      );
+      return { configOptions };
     },
     async authenticate() {
       return {};

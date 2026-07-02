@@ -14,3 +14,5 @@ selection only on their throwaway session.
 
 **Why.** This keeps model names source-of-truth in the ACPs, avoids guessing provider
 catalogs in env/config, and makes budget control explicit at the call site.
+
+**Addendum.** The same selector machinery now also drives ACP `thought_level`, exposed as `effort` (or `efforts` for fan-outs).

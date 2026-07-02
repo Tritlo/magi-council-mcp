@@ -74,6 +74,32 @@ test("happy turn: streams text + reasoning, reports usage", async () => {
   expect(out.result.text).not.toContain("pondering");
 });
 
+test("effort selection applies and status/inventory reflect it", async () => {
+  const s = makeSession("answer");
+  let activity = "";
+  const out = await s.ask("hi", { effort: "high", onActivity: (note) => (activity += `${note}\n`) });
+  expect(out.type).toBe("answer");
+  if (out.type === "answer") expect(out.result.log.join("\n")).toContain("reasoning effort selected: high");
+  expect(activity).toContain("reasoning effort: high");
+  expect(s.status().currentThoughtLevel).toBe("high");
+
+  const inventory = await s.availableSelectors();
+  expect(inventory.thoughtLevel.current).toBe("high");
+  expect(inventory.thoughtLevel.choices.find((c) => c.value === "high")?.current).toBe(true);
+});
+
+test("invalid effort errors with available choices", async () => {
+  const s = makeSession("answer");
+  let message = "";
+  try {
+    await s.ask("hi", { effort: "ultra" });
+  } catch (err) {
+    message = (err as Error).message;
+  }
+  expect(message).toContain("Fake does not report reasoning effort ultra");
+  expect(message).toContain("Available reasoning efforts: low, medium, high");
+});
+
 test("permission suspend → permit allow resumes the same turn", async () => {
   const s = makeSession("permission");
   const o1 = await s.ask("write FOO");

@@ -11,9 +11,12 @@ import { resetNonceFile } from "./reset.ts";
 import {
   AcpSession,
   NoPendingPermission,
+  selectorLabel,
+  selectorPluralLabel,
   type AskOptions,
   type AskResult,
   type MemberInventory,
+  type SelectorCategory,
   type SelectorInventory,
   type SessionStatus,
   type TurnOutcome,
@@ -238,11 +241,19 @@ function streamHooks(notify: Notify, prefix = ""): Pick<AskOptions, "onText" | "
 }
 
 /** Start a member turn, streaming progress, honouring cancellation, and reporting errors. */
-function ask(id: MemberId, prompt: string, extra: Extra, label: string, time?: number, model?: string): Promise<ToolResult> {
+function ask(
+  id: MemberId,
+  prompt: string,
+  extra: Extra,
+  label: string,
+  time?: number,
+  model?: string,
+  effort?: string,
+): Promise<ToolResult> {
   const session = sessions[id];
   const timeoutMs = time !== undefined ? time * 1000 : undefined;
   return session
-    .ask(prompt, { label, signal: extra.signal, timeoutMs, model, ...streamHooks(progressNotifier(extra)) })
+    .ask(prompt, { label, signal: extra.signal, timeoutMs, model, effort, ...streamHooks(progressNotifier(extra)) })
     .then((outcome) => renderOutcome(outcome, session.name))
     .catch((err: unknown) => renderMemberError(session.name, err, session.loginHint));
 }
@@ -265,6 +276,7 @@ const timeField = {
 };
 
 type ModelSelection = Partial<Record<MemberId, string>>;
+type EffortSelection = Partial<Record<MemberId, string>>;
 const modelValue = z.string().min(1);
 const modelField = {
   model: modelValue
@@ -273,12 +285,27 @@ const modelField = {
       "Optional ACP model selector value/name to use for this member before the turn starts. The selection is session-level and remains until changed or reset.",
     ),
 };
+const effortField = {
+  effort: modelValue
+    .optional()
+    .describe(
+      "Optional ACP thought_level (reasoning effort) selector value/name to use for this member before the turn starts. Values come from available_councilors. The selection is session-level and remains until changed or reset.",
+    ),
+};
 const modelsField = {
   models: z
     .object({ claude: modelValue.optional(), codex: modelValue.optional(), grok: modelValue.optional() })
     .optional()
     .describe(
       "Optional per-member ACP model selector values/names for a council fan-out, e.g. { codex: \"...\", claude: \"...\" }. Values come from available_councilors.",
+    ),
+};
+const effortsField = {
+  efforts: z
+    .object({ claude: modelValue.optional(), codex: modelValue.optional(), grok: modelValue.optional() })
+    .optional()
+    .describe(
+      "Optional per-member ACP thought_level (reasoning effort) selector values/names for a council fan-out, e.g. { codex: \"high\", claude: \"medium\" }. Values come from available_councilors.",
     ),
 };
 const modeField = {
@@ -309,12 +336,13 @@ memberTools.codex.push(
           .optional()
           .describe("Optional background: your current thinking, constraints, or relevant snippets."),
         ...modelField,
+        ...effortField,
         ...timeField,
       },
     },
-    ({ question, context, time, model }, extra) =>
+    ({ question, context, time, model, effort }, extra) =>
       isActive("codex")
-        ? ask("codex", askCodexPrompt(hostName(), question, context), extra, "ask_codex", time, model)
+        ? ask("codex", askCodexPrompt(hostName(), question, context), extra, "ask_codex", time, model, effort)
         : inactiveResult("codex"),
   ),
 );
@@ -328,12 +356,13 @@ memberTools.codex.push(
       inputSchema: {
         message: z.string().describe("Your rebuttal, counter-point, or follow-up question for Codex."),
         ...modelField,
+        ...effortField,
         ...timeField,
       },
     },
-    ({ message, time, model }, extra) =>
+    ({ message, time, model, effort }, extra) =>
       isActive("codex")
-        ? ask("codex", replyPrompt(hostName(), message), extra, "codex_reply", time, model)
+        ? ask("codex", replyPrompt(hostName(), message), extra, "codex_reply", time, model, effort)
         : inactiveResult("codex"),
   ),
 );
@@ -350,12 +379,13 @@ memberTools.claude.push(
         question: z.string().describe("The specific question or decision to put to Claude."),
         context: z.string().optional().describe("Optional background, constraints, or relevant snippets."),
         ...modelField,
+        ...effortField,
         ...timeField,
       },
     },
-    ({ question, context, time, model }, extra) =>
+    ({ question, context, time, model, effort }, extra) =>
       isActive("claude")
-        ? ask("claude", askClaudePrompt(hostName(), question, context), extra, "ask_claude", time, model)
+        ? ask("claude", askClaudePrompt(hostName(), question, context), extra, "ask_claude", time, model, effort)
         : inactiveResult("claude"),
   ),
 );
@@ -369,12 +399,13 @@ memberTools.claude.push(
       inputSchema: {
         message: z.string().describe("Your rebuttal, counter-point, or follow-up question for Claude."),
         ...modelField,
+        ...effortField,
         ...timeField,
       },
     },
-    ({ message, time, model }, extra) =>
+    ({ message, time, model, effort }, extra) =>
       isActive("claude")
-        ? ask("claude", replyPrompt(hostName(), message), extra, "claude_reply", time, model)
+        ? ask("claude", replyPrompt(hostName(), message), extra, "claude_reply", time, model, effort)
         : inactiveResult("claude"),
   ),
 );
@@ -391,12 +422,13 @@ memberTools.grok.push(
         question: z.string().describe("The specific question or task to put to Grok."),
         context: z.string().optional().describe("Optional background, constraints, or relevant snippets."),
         ...modelField,
+        ...effortField,
         ...timeField,
       },
     },
-    ({ question, context, time, model }, extra) =>
+    ({ question, context, time, model, effort }, extra) =>
       isActive("grok")
-        ? ask("grok", askGrokPrompt(hostName(), question, context), extra, "ask_grok", time, model)
+        ? ask("grok", askGrokPrompt(hostName(), question, context), extra, "ask_grok", time, model, effort)
         : inactiveResult("grok"),
   ),
 );
@@ -410,12 +442,13 @@ memberTools.grok.push(
       inputSchema: {
         message: z.string().describe("Your rebuttal, counter-point, or follow-up question for Grok."),
         ...modelField,
+        ...effortField,
         ...timeField,
       },
     },
-    ({ message, time, model }, extra) =>
+    ({ message, time, model, effort }, extra) =>
       isActive("grok")
-        ? ask("grok", replyPrompt(hostName(), message), extra, "grok_reply", time, model)
+        ? ask("grok", replyPrompt(hostName(), message), extra, "grok_reply", time, model, effort)
         : inactiveResult("grok"),
   ),
 );
@@ -437,12 +470,13 @@ memberTools.grok.push(
           .optional()
           .describe("Optional path/filename to save to (relative to the workspace). Omit to let Grok choose."),
         ...modelField,
+        ...effortField,
         ...timeField,
       },
     },
-    ({ prompt, kind, output_path, time, model }, extra) =>
+    ({ prompt, kind, output_path, time, model, effort }, extra) =>
       isActive("grok")
-        ? ask("grok", grokGeneratePrompt(prompt, kind ?? "image", output_path), extra, "grok_generate", time, model)
+        ? ask("grok", grokGeneratePrompt(prompt, kind ?? "image", output_path), extra, "grok_generate", time, model, effort)
         : inactiveResult("grok"),
   ),
 );
@@ -495,6 +529,7 @@ interface DelegateArgs {
   name?: string;
   mode?: string;
   model?: string;
+  effort?: string;
   time?: number;
 }
 
@@ -547,6 +582,7 @@ function runDelegate(id: MemberId, args: DelegateArgs, extra: Extra): Promise<To
       timeoutMs: args.time !== undefined ? args.time * 1000 : undefined,
       mode: args.mode,
       model: args.model,
+      effort: args.effort,
       ...streamHooks(progressNotifier(extra)),
     })
     .then((outcome) => renderOutcome(outcome, session.name, permitRef(del)))
@@ -568,6 +604,7 @@ const delegateInput = {
     ),
   ...modeField,
   ...modelField,
+  ...effortField,
   ...timeField,
 };
 
@@ -631,17 +668,29 @@ server.registerTool(
       context: z.string().optional().describe("Optional background or constraints."),
       ...memberField,
       ...modelField,
+      ...effortField,
       ...modelsField,
+      ...effortsField,
       ...timeField,
     },
   },
-  ({ plan, context, member, time, model, models }, extra) => {
+  ({ plan, context, member, time, model, effort, models, efforts }, extra) => {
     const build = (id: MemberId): string => reviewPlanPrompt(specs[id].promptName, hostName(), plan, context);
     if (member === "council")
-      return councilFanOut("review_plan", build, extra, time !== undefined ? time * 1000 : undefined, persistentSession, activeIds(), undefined, models);
+      return councilFanOut(
+        "review_plan",
+        build,
+        extra,
+        time !== undefined ? time * 1000 : undefined,
+        persistentSession,
+        activeIds(),
+        undefined,
+        models,
+        efforts,
+      );
     const target = advisorFor(member);
     if (!target) return inactiveResult(member!);
-    return ask(target, build(target), extra, "review_plan", time, model);
+    return ask(target, build(target), extra, "review_plan", time, model, effort);
   },
 );
 
@@ -656,11 +705,13 @@ server.registerTool(
       instructions: z.string().optional().describe("Optional extra focus for the review."),
       ...memberField,
       ...modelField,
+      ...effortField,
       ...modelsField,
+      ...effortsField,
       ...timeField,
     },
   },
-  ({ diff, paths, instructions, member, time, model, models }, extra) => {
+  ({ diff, paths, instructions, member, time, model, effort, models, efforts }, extra) => {
     const build = (id: MemberId): string => reviewDiffPrompt(specs[id].promptName, hostName(), { diff, paths, instructions });
     if (member === "council") {
       // Council mode is read-only — it can't run `git diff`. Without an explicit
@@ -676,11 +727,21 @@ server.registerTool(
           ],
         };
       }
-      return councilFanOut("review_diff", build, extra, time !== undefined ? time * 1000 : undefined, persistentSession, activeIds(), undefined, models);
+      return councilFanOut(
+        "review_diff",
+        build,
+        extra,
+        time !== undefined ? time * 1000 : undefined,
+        persistentSession,
+        activeIds(),
+        undefined,
+        models,
+        efforts,
+      );
     }
     const target = advisorFor(member);
     if (!target) return inactiveResult(member!);
-    return ask(target, build(target), extra, "review_diff", time, model);
+    return ask(target, build(target), extra, "review_diff", time, model, effort);
   },
 );
 
@@ -694,17 +755,19 @@ server.registerTool(
       constraints: z.string().optional().describe("Optional constraints, requirements, or non-goals."),
       ...memberField,
       ...modelField,
+      ...effortField,
       ...modelsField,
+      ...effortsField,
       ...timeField,
     },
   },
-  ({ problem, constraints, member, time, model, models }, extra) => {
+  ({ problem, constraints, member, time, model, effort, models, efforts }, extra) => {
     const build = (id: MemberId): string => brainstormPrompt(specs[id].promptName, hostName(), problem, constraints);
     if (member === "council")
-      return councilFanOut("brainstorm", build, extra, time !== undefined ? time * 1000 : undefined, persistentSession, activeIds(), undefined, models);
+      return councilFanOut("brainstorm", build, extra, time !== undefined ? time * 1000 : undefined, persistentSession, activeIds(), undefined, models, efforts);
     const target = advisorFor(member);
     if (!target) return inactiveResult(member!);
-    return ask(target, build(target), extra, "brainstorm", time, model);
+    return ask(target, build(target), extra, "brainstorm", time, model, effort);
   },
 );
 
@@ -718,17 +781,19 @@ server.registerTool(
       paths: z.string().optional().describe("Optional starting paths."),
       ...memberField,
       ...modelField,
+      ...effortField,
       ...modelsField,
+      ...effortsField,
       ...timeField,
     },
   },
-  ({ focus, paths, member, time, model, models }, extra) => {
+  ({ focus, paths, member, time, model, effort, models, efforts }, extra) => {
     const build = (id: MemberId): string => explorePrompt(specs[id].promptName, hostName(), focus, paths);
     if (member === "council")
-      return councilFanOut("explore", build, extra, time !== undefined ? time * 1000 : undefined, persistentSession, activeIds(), undefined, models);
+      return councilFanOut("explore", build, extra, time !== undefined ? time * 1000 : undefined, persistentSession, activeIds(), undefined, models, efforts);
     const target = advisorFor(member);
     if (!target) return inactiveResult(member!);
-    return ask(target, build(target), extra, "explore", time, model);
+    return ask(target, build(target), extra, "explore", time, model, effort);
   },
 );
 
@@ -761,6 +826,7 @@ server.registerTool(
           "Which members sit on the council for this call. Omit for the default — every active advisor (the members other than you). Name a subset to convene just those. (The host is never a member; it participates by driving the rounds.)",
         ),
       ...modelsField,
+      ...effortsField,
       ...timeField,
     },
   },
@@ -774,6 +840,7 @@ interface MagiArgs {
   fresh?: boolean;
   members?: MemberId[];
   models?: ModelSelection;
+  efforts?: EffortSelection;
   time?: number;
 }
 
@@ -809,6 +876,7 @@ async function councilTurn(
   notify: Notify,
   timeoutMs: number | undefined,
   model: string | undefined,
+  effort: string | undefined,
   getSession: SessionFor,
 ): Promise<{ name: string; markup: string; text: string }> {
   const name = specs[id].name;
@@ -818,6 +886,7 @@ async function councilTurn(
       signal: extra.signal,
       timeoutMs,
       model,
+      effort,
       onAskPermission: "read-only",
       ...streamHooks(notify, prefix),
     });
@@ -857,6 +926,7 @@ async function councilFanOut(
   ids: MemberId[] = activeIds(),
   synth?: string,
   models?: ModelSelection,
+  efforts?: EffortSelection,
 ): Promise<ToolResult> {
   const host = hostName();
   const sections: string[] = [];
@@ -866,7 +936,18 @@ async function councilFanOut(
   const notify = progressNotifier(extra); // one shared channel for all concurrent advisors
   const voices = await Promise.all(
     ids.map((id) =>
-      councilTurn(id, buildPrompt(id), label, `${specs[id].name} `, extra, notify, timeoutMs, models?.[id], getSession),
+      councilTurn(
+        id,
+        buildPrompt(id),
+        label,
+        `${specs[id].name} `,
+        extra,
+        notify,
+        timeoutMs,
+        models?.[id],
+        efforts?.[id],
+        getSession,
+      ),
     ),
   );
   sections.push(...voices.map((v) => v.markup));
@@ -923,6 +1004,7 @@ async function runMagi(args: MagiArgs, extra: Extra): Promise<ToolResult> {
       active,
       `_You (${host}) are the lead **and a participant** in this deliberation. Read these views and form your own position. **Unless you and the council have reached agreement, call \`consult\` again** with \`my_take\` set to your current position (and any new framing in \`context\`) to run the next round — the advisors keep their context and will respond to you. Iterate until you judge agreement is reached, then act on it. (Or ask one directly with \`ask_codex\`/\`ask_grok\`/\`ask_claude\`.)_`,
       args.models,
+      args.efforts,
     );
   } finally {
     for (const s of Object.values(ephemeral)) s?.dispose();
@@ -931,15 +1013,17 @@ async function runMagi(args: MagiArgs, extra: Extra): Promise<ToolResult> {
 
 // --- Shared session controls ----------------------------------------------
 
-function renderSelector(label: "model" | "mode", inv: SelectorInventory): string[] {
+function renderSelector(category: SelectorCategory, inv: SelectorInventory): string[] {
+  const label = selectorLabel(category);
+  const plural = selectorPluralLabel(category);
   const lines = [
     `  ${label} selector: ${inv.selector ? `${inv.selector.name} (${inv.selector.id})` : "not reported"}`,
     `  current ${label}: ${inv.current ?? "not reported"}`,
   ];
   if (inv.choices.length === 0) {
-    lines.push(`  ${label}s: not reported by ACP`);
+    lines.push(`  ${plural}: not reported by ACP`);
   } else {
-    lines.push(`  ${label}s:`);
+    lines.push(`  ${plural}:`);
     for (const choice of inv.choices) {
       const name = choice.name === choice.value ? choice.value : `${choice.value} (${choice.name})`;
       const group = choice.group ? ` [${choice.group}]` : "";
@@ -955,6 +1039,7 @@ function renderInventory(id: MemberId, inventory: MemberInventory): string {
     `  session: ${inventory.sessionStarted ? "started" : "not started"}`,
     ...renderSelector("model", inventory.model),
     ...renderSelector("mode", inventory.mode),
+    ...renderSelector("thought_level", inventory.thoughtLevel),
   ].join("\n");
 }
 
@@ -962,7 +1047,7 @@ server.registerTool(
   "available_councilors",
   {
     description:
-      "Start the requested active council members if needed and report the ACP model AND permission-mode selector values they expose. Does not send a prompt turn; use the listed values with `consult.models`, single-member `model`, or a delegate's `mode`/`model`.",
+      "Start the requested active council members if needed and report the ACP model, permission-mode, and reasoning-effort selector values they expose. Does not send a prompt turn; use the listed values with `consult.models`/`consult.efforts`, single-member `model`/`effort`, or a delegate's `mode`/`model`/`effort`.",
     inputSchema: {
       members: z
         .array(z.enum(["claude", "codex", "grok"]))
@@ -989,7 +1074,7 @@ server.registerTool(
       content: [
         {
           type: "text" as const,
-          text: `${sections.join("\n\n")}\n\nUse the value at the start of a model row, not the display name, when possible.`,
+          text: `${sections.join("\n\n")}\n\nUse the value at the start of a choice row, not the display name, when possible.`,
         },
       ],
     };
@@ -1121,7 +1206,7 @@ function renderStatus(s: SessionStatus): string {
     `  acp command: ${s.acpCommand}`,
     `  guardian: external-reads ${onoff(s.guardian.externalReads)} · writes ${onoff(s.guardian.writes)} · commands ${onoff(s.guardian.commands)}`,
     `  session: ${s.sessionStarted ? "started" : "not started"} · subprocess: ${s.childAlive ? "alive" : "down"}`,
-    `  model: ${s.currentModel ?? "not reported"} · mode: ${s.currentMode ?? "not reported"}`,
+    `  model: ${s.currentModel ?? "not reported"} · mode: ${s.currentMode ?? "not reported"} · reasoning effort: ${s.currentThoughtLevel ?? "not reported"}`,
     ...(s.modePinWarning ? [`  ⚠️ ${s.modePinWarning}`] : []),
     `  ${s.pendingPermission ? `awaiting permit: ${s.pendingPermission}` : "no pending permission"}`,
     s.stderrTail ? `  recent stderr:\n${s.stderrTail}` : "  no stderr captured",

@@ -118,6 +118,8 @@ export interface AskOptions {
   model?: string;
   /** Optional ACP permission-mode selector value/name to use before sending this turn. */
   mode?: string;
+  /** Optional ACP reasoning-effort selector value/name to use before sending this turn. */
+  effort?: string;
   /**
    * How to handle a guardian "ask" verdict for this turn. `"suspend"` (the
    * default) hands the decision back to Claude as a permission and pauses the
@@ -169,6 +171,8 @@ export interface SessionStatus {
   currentModel?: string;
   /** Current ACP permission-mode selector value, when the member reports one. */
   currentMode?: string;
+  /** Current ACP reasoning-effort selector value, when the member reports one. */
+  currentThoughtLevel?: string;
   /** Set when a requested mode pin couldn't be applied at session start. */
   modePinWarning?: string;
   childAlive: boolean;
@@ -177,7 +181,7 @@ export interface SessionStatus {
   stderrTail: string;
 }
 
-/** One choice reported by a member's ACP select config option (model or mode). */
+/** One choice reported by a member's ACP select config option (model, mode, or reasoning effort). */
 export interface SelectorChoice {
   value: string;
   name: string;
@@ -193,16 +197,37 @@ export interface SelectorInventory {
   choices: SelectorChoice[];
 }
 
-/** Model + permission-mode selector inventory for one council member. */
+/** Model, permission-mode, and reasoning-effort selector inventory for one council member. */
 export interface MemberInventory {
   name: string;
   sessionStarted: boolean;
   model: SelectorInventory;
   mode: SelectorInventory;
+  thoughtLevel: SelectorInventory;
 }
 
-/** The ACP select config categories the server drives (ADR 0017 models, ADR 0018 modes). */
-type SelectorCategory = "model" | "mode";
+/** The ACP select config categories the server drives (models, modes, and reasoning effort). */
+export type SelectorCategory = "model" | "mode" | "thought_level";
+
+/** Human-facing label for an ACP selector category. */
+export function selectorLabel(category: SelectorCategory): string {
+  return category === "thought_level" ? "reasoning effort" : category;
+}
+
+/** Plural form of {@link selectorLabel} ("reasoning efforts", "models", "modes"). */
+export function selectorPluralLabel(category: SelectorCategory): string {
+  return `${selectorLabel(category)}s`;
+}
+
+const SELECTOR_ALIASES: Record<SelectorCategory, string[][]> = {
+  model: [["model"]],
+  mode: [["mode"]],
+  thought_level: [
+    ["thought", "level"],
+    ["reasoning", "effort"],
+    ["effort"],
+  ],
+};
 
 /** Per-session options (beyond the shared config and member spec). */
 export interface SessionOptions {
@@ -310,9 +335,16 @@ export class AcpSession {
     const exact = this.configOptions.filter((o) => o.type === "select" && o.category === category);
     // Fallback matches whole tokens, not substrings: "model" contains "mode", so a
     // substring match would hand the model selector to an agent with no mode selector.
-    const tokens = (o: SessionConfigOption): string[] =>
-      `${o.id} ${o.name} ${o.category ?? ""}`.toLowerCase().split(/[^a-z0-9]+/);
-    return exact[0] ?? this.configOptions.find((o) => o.type === "select" && tokens(o).includes(category));
+    const tokens = (o: SessionConfigOption): Set<string> =>
+      new Set(`${o.id} ${o.name} ${o.category ?? ""}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+    return (
+      exact[0] ??
+      this.configOptions.find((o) => {
+        if (o.type !== "select") return false;
+        const optionTokens = tokens(o);
+        return SELECTOR_ALIASES[category].some((alias) => alias.every((token) => optionTokens.has(token)));
+      })
+    );
   }
 
   private selectorChoices(option: SessionConfigOption): SelectorChoice[] {
@@ -355,15 +387,17 @@ export class AcpSession {
       sessionStarted: this.sessionId !== undefined,
       model: this.selectorInventory("model"),
       mode: this.selectorInventory("mode"),
+      thoughtLevel: this.selectorInventory("thought_level"),
     };
   }
 
-  /** Select a model/mode config value on the live session (no-op when unset or already current). */
+  /** Select a model/mode/reasoning-effort config value on the live session (no-op when unset or already current). */
   private async selectConfig(category: SelectorCategory, value: string | undefined): Promise<void> {
     const requested = value?.trim();
     if (!requested) return;
     const option = this.selectorOption(category);
-    if (!option) throw new Error(`${this.member.name} does not report an ACP ${category} selector`);
+    const label = selectorLabel(category);
+    if (!option) throw new Error(`${this.member.name} does not report an ACP ${label} selector`);
     const choices = this.selectorChoices(option);
     const requestedLower = requested.toLowerCase();
     const choice =
@@ -371,12 +405,14 @@ export class AcpSession {
       choices.find((c) => c.value.toLowerCase() === requestedLower || c.name.toLowerCase() === requestedLower);
     if (!choice) {
       const available = choices.length > 0 ? choices.map((c) => c.value).join(", ") : "(none reported)";
-      throw new Error(`${this.member.name} does not report ${category} ${requested}. Available ${category}s: ${available}`);
+      throw new Error(
+        `${this.member.name} does not report ${label} ${requested}. Available ${selectorPluralLabel(category)}: ${available}`,
+      );
     }
     if (choice.value === option.currentValue) return;
     if (!this.conn || !this.sessionId) throw new Error(`${this.member.name} session is not started`);
-    this.turnLog.push(`${category} selected: ${choice.value}`);
-    this.turnOnActivity?.(`${category}: ${choice.value}`);
+    this.turnLog.push(`${label} selected: ${choice.value}`);
+    this.turnOnActivity?.(`${label}: ${choice.value}`);
     const updated = await this.conn.setSessionConfigOption({
       sessionId: this.sessionId,
       configId: option.id,
@@ -791,6 +827,7 @@ export class AcpSession {
     this.turnText = "";
     this.turnLog = [];
     this.turnStart = Date.now();
+    this.turnOnActivity = opts.onActivity;
     this.eventQueue = [];
     this.eventWaiter = undefined;
     try {
@@ -802,6 +839,8 @@ export class AcpSession {
       }
       await this.selectConfig("mode", opts.mode);
       await this.selectConfig("model", opts.model);
+      // Codex ACP refreshes supported reasoning efforts after model changes.
+      await this.selectConfig("thought_level", opts.effort);
     } catch (err) {
       this.finish(id);
       throw err;
@@ -1018,6 +1057,7 @@ export class AcpSession {
       sessionStarted: this.sessionId !== undefined,
       currentModel: this.selectorInventory("model").current,
       currentMode: this.selectorInventory("mode").current,
+      currentThoughtLevel: this.selectorInventory("thought_level").current,
       modePinWarning: this.modePinWarning,
       childAlive: child !== undefined && child.exitCode === null && !child.killed,
       pendingPermission: this.awaitingDecision?.description,
