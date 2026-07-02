@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
@@ -6,6 +7,7 @@ import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sd
 import { z } from "zod";
 import { loadConfig, MEMBER_IDS, type MemberId, type MemberSpec } from "./config.ts";
 import { selectCouncil } from "./council.ts";
+import { resetNonceFile } from "./reset.ts";
 import {
   AcpSession,
   NoPendingPermission,
@@ -463,6 +465,30 @@ const delegates = new Map<string, Delegate>();
 const MAX_DELEGATES = 8;
 const DELEGATE_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
+/** How the host addresses a delegate's pending permission in `permit`. */
+const permitRef = (d: Delegate): string => `member \`${d.member}\`, delegate \`${d.alias}\``;
+
+// Delegates don't survive the host's /clear: mirror AcpSession's per-session
+// epoch check at the map level — a changed reset nonce dismisses every delegate,
+// so an alias from the previous conversation can't collide with (and receive
+// steering framing meant for) a fresh one.
+let delegateNonce = readResetNonce();
+function readResetNonce(): string | undefined {
+  try {
+    return readFileSync(resetNonceFile(config.workspaceRoot), "utf8") || undefined;
+  } catch {
+    return undefined; // missing/unreadable is "no change"
+  }
+}
+function checkDelegateEpoch(): void {
+  const nonce = readResetNonce();
+  if (nonce !== undefined && nonce !== delegateNonce) {
+    delegateNonce = nonce;
+    for (const d of delegates.values()) d.session.dispose();
+    delegates.clear();
+  }
+}
+
 interface DelegateArgs {
   task: string;
   context?: string;
@@ -474,18 +500,25 @@ interface DelegateArgs {
 
 function runDelegate(id: MemberId, args: DelegateArgs, extra: Extra): Promise<ToolResult> | ToolResult {
   if (!isActive(id)) return inactiveResult(id);
+  checkDelegateEpoch();
   const alias = (args.name ?? id).trim();
   if (!DELEGATE_NAME.test(alias)) {
     return textResult(`Invalid delegate name "${alias}" — use a short lowercase slug (${DELEGATE_NAME}).`);
   }
   const key = `${id}:${alias}`;
   let d = delegates.get(key);
-  // Never let a new task land on a delegate suspended mid-permission: ask() would
-  // abandon the half-done turn (fine for advisors, destructive for a coder).
+  // Never let a new task land on a delegate mid-turn: a queued ask() would trigger
+  // the gateWaiters abandon path if the turn suspends (fine for advisors,
+  // destructive for a coder), so refuse instead of queueing.
   if (d?.session.isAwaitingPermission()) {
     return textResult(
       `Delegate ${key} is paused awaiting your permission decision — resolve it first with **permit** ` +
-        `(member \`${id}\`, delegate \`${alias}\`); sending a new task now would abandon its half-done turn.`,
+        `(${permitRef(d)}); sending a new task now would abandon its half-done turn.`,
+    );
+  }
+  if (d?.session.isBusy()) {
+    return textResult(
+      `Delegate ${key} is still working on its previous task — wait for that call to finish (or cancel it) before steering; queueing a new task now could abandon its in-flight turn.`,
     );
   }
   if (!d) {
@@ -498,14 +531,15 @@ function runDelegate(id: MemberId, args: DelegateArgs, extra: Extra): Promise<To
     d = { member: id, alias, session: new AcpSession(config, { ...specs[id], name: `${specs[id].name}[${alias}]` }) };
     delegates.set(key, d);
   }
+  const del = d;
   // A session that hasn't started (new delegate, or dropped by reset/startup
   // failure) gets the full delegate framing; a live one gets a steering follow-up
   // on its accumulated context.
-  const firstTurn = !d.session.status().sessionStarted;
+  const firstTurn = !del.session.status().sessionStarted;
   const prompt = firstTurn
     ? delegatePrompt(specs[id].promptName, hostName(), args.task, args.context)
     : delegateSteerPrompt(hostName(), args.task, args.context);
-  const session = d.session;
+  const session = del.session;
   return session
     .ask(prompt, {
       label: `delegate_${id}`,
@@ -515,7 +549,7 @@ function runDelegate(id: MemberId, args: DelegateArgs, extra: Extra): Promise<To
       model: args.model,
       ...streamHooks(progressNotifier(extra)),
     })
-    .then((outcome) => renderOutcome(outcome, session.name, `member \`${id}\`, delegate \`${alias}\``))
+    .then((outcome) => renderOutcome(outcome, session.name, permitRef(del)))
     .catch((err: unknown) => renderMemberError(session.name, err, session.loginHint));
 }
 
@@ -989,10 +1023,10 @@ server.registerTool(
         ? []
         : activeIds()
             .filter((id) => !member || id === member)
-            .map((id) => ({ key: id as string, session: sessions[id] }))),
+            .map((id) => ({ key: id as string, session: sessions[id], ref: undefined as string | undefined }))),
       ...[...delegates.values()]
         .filter((d) => (!member || d.member === member) && (!delegate || d.alias === delegate))
-        .map((d) => ({ key: `${d.member}:${d.alias}`, session: d.session })),
+        .map((d) => ({ key: `${d.member}:${d.alias}`, session: d.session, ref: permitRef(d) })),
     ].filter((c) => c.session.isAwaitingPermission());
     if (pending.length === 0) {
       const who = [member, delegate && `delegate ${delegate}`].filter(Boolean).join(" ") || "any member or delegate";
@@ -1005,7 +1039,9 @@ server.registerTool(
         `More than one session is paused awaiting a decision (${pending.map((c) => c.key).join(", ")}) — call **permit** again with \`member\` (and \`delegate\` for a delegate) set to one of them.`,
       );
     }
-    const target = pending[0]!.session;
+    // Keep the matched candidate's permit address: a resumed delegate turn can
+    // raise a SECOND permission, and its 🔐 must be addressed the same way.
+    const { session: target, ref } = pending[0]!;
     return target
       .permit(
         decision === "allow",
@@ -1017,7 +1053,7 @@ server.registerTool(
         },
         note,
       )
-      .then((outcome) => renderOutcome(outcome, target.name))
+      .then((outcome) => renderOutcome(outcome, target.name, ref))
       .catch((err: unknown): ToolResult => {
         if (err instanceof NoPendingPermission) {
           return {

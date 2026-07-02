@@ -264,8 +264,8 @@ last one. `reset` clears **all** members and dismisses all delegates. Two ways t
 
 - **Automatic, on `/clear`** — install the `SessionStart` hook below. It writes
   the new session id to a per-workspace nonce file; the server notices the change
-  on its next turn and drops the members' sessions, so they start fresh alongside
-  the host. (`compact`/`resume`/`startup` are intentionally left alone.) **This
+  on its next turn, drops the members' sessions, and dismisses all delegates, so
+  everything starts fresh alongside the host. (`compact`/`resume`/`startup` are intentionally left alone.) **This
   hook is Claude Code-specific** — for a Codex/Grok host, use the manual `reset`
   tool instead.
 - **Manual** — call the `reset` tool any time: switching to an unrelated task,

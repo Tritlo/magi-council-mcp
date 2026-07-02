@@ -55,15 +55,19 @@ verified by live ACP probes against codex-acp, claude-agent-acp, and grok.
   implementation-agent framing plus a report contract (what changed, files touched,
   tests/commands run, blockers); follow-ups get a short steering prompt (mirrors the
   `ask_X` / `X_reply` split). No `delegate_reply` tool.
-- **Suspended-turn safety**: a same-name call while that delegate awaits a `permit`
-  is **refused** in `index.ts` (decide the permission first) — `ask()`'s abandon
-  path is fine for advisors but must not silently kill a coder's half-done turn.
+- **In-flight-turn safety**: a same-name call while that delegate awaits a `permit`
+  (decide it first) or is still mid-turn (wait, or cancel the call) is **refused**
+  in `index.ts` — queueing behind the session gate would trigger `ask()`'s abandon
+  path, which is fine for advisors but must not silently kill a coder's half-done
+  turn.
 - **Routing & lifecycle**: `permit` addresses an exact delegate (member + name) and
   errors on ambiguity; `status` grows a delegates section (mode + subprocess
   liveness visible, so accumulation can't hide); `reset` disposes and deletes all
   delegates. No per-delegate `dismiss` in v1 — extra surface before real pressure.
   Names are validated (slug, bounded length) and the delegate count capped, so
-  typos can't grow the subprocess map unbounded.
+  typos can't grow the subprocess map unbounded. The host's `/clear` (reset nonce)
+  also dismisses all delegates — a stale alias from the previous conversation must
+  not collide with, and receive steering framing meant for, a fresh one.
 - **No git-worktree isolation in v1** — the manager partitions work between
   concurrent delegates in the task text. Worktrees later if collisions hurt.
 

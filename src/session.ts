@@ -298,14 +298,21 @@ export class AcpSession {
     return this.awaitingDecision !== undefined;
   }
 
+  /** True while a turn holds the gate — running, suspended on a permission, or
+   * resuming after a permit. A new ask() now would queue (and could trigger the
+   * gateWaiters abandon path if the holder suspends), so callers that must never
+   * abandon in-flight work (delegates) check this and refuse instead. */
+  isBusy(): boolean {
+    return this.releaseGate !== undefined;
+  }
+
   private selectorOption(category: SelectorCategory): SessionConfigOption | undefined {
     const exact = this.configOptions.filter((o) => o.type === "select" && o.category === category);
-    return (
-      exact[0] ??
-      this.configOptions.find(
-        (o) => o.type === "select" && `${o.id} ${o.name} ${o.category ?? ""}`.toLowerCase().includes(category),
-      )
-    );
+    // Fallback matches whole tokens, not substrings: "model" contains "mode", so a
+    // substring match would hand the model selector to an agent with no mode selector.
+    const tokens = (o: SessionConfigOption): string[] =>
+      `${o.id} ${o.name} ${o.category ?? ""}`.toLowerCase().split(/[^a-z0-9]+/);
+    return exact[0] ?? this.configOptions.find((o) => o.type === "select" && tokens(o).includes(category));
   }
 
   private selectorChoices(option: SessionConfigOption): SelectorChoice[] {
