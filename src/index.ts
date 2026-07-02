@@ -11,7 +11,8 @@ import {
   NoPendingPermission,
   type AskOptions,
   type AskResult,
-  type ModelInventory,
+  type MemberInventory,
+  type SelectorInventory,
   type SessionStatus,
   type TurnOutcome,
 } from "./session.ts";
@@ -20,6 +21,8 @@ import {
   askCodexPrompt,
   askGrokPrompt,
   brainstormPrompt,
+  delegatePrompt,
+  delegateSteerPrompt,
   explorePrompt,
   grokGeneratePrompt,
   magiAdvisorPrompt,
@@ -42,10 +45,23 @@ console.error = ((...args: unknown[]): void => {
 
 const config = loadConfig();
 const specs: Record<MemberId, MemberSpec> = { claude: config.claude, codex: config.codex, grok: config.grok };
+
+/**
+ * Restricted permission modes pinned on ADVISOR sessions at start (ADR 0018):
+ * advisors deliberate, and the agents' own defaults (codex `agent`, claude `auto`)
+ * self-approve writes without our guardian ever seeing a request. Best-effort —
+ * skipped with a status warning when the agent doesn't offer the mode (Grok
+ * reports none). Delegate sessions are NOT pinned; they use the agent's native
+ * modes (default or per-call `mode`).
+ */
+const ADVISOR_MODE: Partial<Record<MemberId, string>> = { codex: "read-only", claude: "default" };
+const advisorSession = (id: MemberId): AcpSession =>
+  new AcpSession(config, specs[id], { pinnedMode: ADVISOR_MODE[id] });
+
 const sessions: Record<MemberId, AcpSession> = {
-  claude: new AcpSession(config, config.claude),
-  codex: new AcpSession(config, config.codex),
-  grok: new AcpSession(config, config.grok),
+  claude: advisorSession("claude"),
+  codex: advisorSession("codex"),
+  grok: advisorSession("grok"),
 };
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -128,8 +144,9 @@ function renderAnswer(result: AskResult, name: string): ToolResult {
   return { content: [{ type: "text", text: `${body}${stop}\n\n${footer(result)}` }] };
 }
 
-/** Render whatever a turn produced: an answer, or a permission for the host to judge. */
-function renderOutcome(outcome: TurnOutcome, name: string): ToolResult {
+/** Render whatever a turn produced: an answer, or a permission for the host to judge.
+ * `permitRef` is how the host addresses this session in `permit` (defaults to the member). */
+function renderOutcome(outcome: TurnOutcome, name: string, permitRef?: string): ToolResult {
   if (outcome.type === "permission") {
     return {
       content: [
@@ -139,13 +156,15 @@ function renderOutcome(outcome: TurnOutcome, name: string): ToolResult {
             `🔐 ${name} paused and needs your permission to continue:\n\n` +
             `    ${outcome.description}\n\n` +
             `Decide whether this is reasonable, then call **permit** with decision \`allow\` or \`deny\` ` +
-            `(member \`${name.toLowerCase()}\`) to resume the turn — ${name} is waiting on the same session.`,
+            `(${permitRef ?? `member \`${name.toLowerCase()}\``}) to resume the turn — ${name} is waiting on the same session.`,
         },
       ],
     };
   }
   return renderAnswer(outcome.result, name);
 }
+
+const textResult = (text: string): ToolResult => ({ content: [{ type: "text", text }] });
 
 /** Turn a thrown member error into a readable result, flagging likely out-of-usage. */
 function renderMemberError(name: string, err: unknown, loginHint?: string): ToolResult {
@@ -258,6 +277,13 @@ const modelsField = {
     .optional()
     .describe(
       "Optional per-member ACP model selector values/names for a council fan-out, e.g. { codex: \"...\", claude: \"...\" }. Values come from available_councilors.",
+    ),
+};
+const modeField = {
+  mode: modelValue
+    .optional()
+    .describe(
+      "Optional ACP permission-mode value/name for this delegate (values from available_councilors; e.g. codex `agent`, claude `acceptEdits`). Session-level and sticky until changed or reset. Omit for the agent's default.",
     ),
 };
 
@@ -416,6 +442,134 @@ memberTools.grok.push(
       isActive("grok")
         ? ask("grok", grokGeneratePrompt(prompt, kind ?? "image", output_path), extra, "grok_generate", time, model)
         : inactiveResult("grok"),
+  ),
+);
+
+// --- Delegate tools (members as managed coders; ADR 0018) -------------------
+// Each named delegate runs on its OWN session, separate from the member's advisor
+// session, so several delegates can work concurrently (the host issues parallel
+// tool calls) and coding context never bleeds into the advisor debates.
+// Permissions follow the member's native ACP mode — the delegate sessions are not
+// pinned like advisors. Grok reports no modes, so its writes/commands surface to
+// the host via `permit` as before.
+
+interface Delegate {
+  member: MemberId;
+  alias: string;
+  session: AcpSession;
+}
+/** Live delegates, keyed `${member}:${alias}`. Disposed and cleared by `reset`. */
+const delegates = new Map<string, Delegate>();
+const MAX_DELEGATES = 8;
+const DELEGATE_NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+interface DelegateArgs {
+  task: string;
+  context?: string;
+  name?: string;
+  mode?: string;
+  model?: string;
+  time?: number;
+}
+
+function runDelegate(id: MemberId, args: DelegateArgs, extra: Extra): Promise<ToolResult> | ToolResult {
+  if (!isActive(id)) return inactiveResult(id);
+  const alias = (args.name ?? id).trim();
+  if (!DELEGATE_NAME.test(alias)) {
+    return textResult(`Invalid delegate name "${alias}" — use a short lowercase slug (${DELEGATE_NAME}).`);
+  }
+  const key = `${id}:${alias}`;
+  let d = delegates.get(key);
+  // Never let a new task land on a delegate suspended mid-permission: ask() would
+  // abandon the half-done turn (fine for advisors, destructive for a coder).
+  if (d?.session.isAwaitingPermission()) {
+    return textResult(
+      `Delegate ${key} is paused awaiting your permission decision — resolve it first with **permit** ` +
+        `(member \`${id}\`, delegate \`${alias}\`); sending a new task now would abandon its half-done turn.`,
+    );
+  }
+  if (!d) {
+    if (delegates.size >= MAX_DELEGATES) {
+      return textResult(
+        `Delegate limit reached (${MAX_DELEGATES} live: ${[...delegates.keys()].join(", ")}) — \`reset\` clears them all.`,
+      );
+    }
+    // The spec clone gives the delegate a distinct display name in output/logs.
+    d = { member: id, alias, session: new AcpSession(config, { ...specs[id], name: `${specs[id].name}[${alias}]` }) };
+    delegates.set(key, d);
+  }
+  // A session that hasn't started (new delegate, or dropped by reset/startup
+  // failure) gets the full delegate framing; a live one gets a steering follow-up
+  // on its accumulated context.
+  const firstTurn = !d.session.status().sessionStarted;
+  const prompt = firstTurn
+    ? delegatePrompt(specs[id].promptName, hostName(), args.task, args.context)
+    : delegateSteerPrompt(hostName(), args.task, args.context);
+  const session = d.session;
+  return session
+    .ask(prompt, {
+      label: `delegate_${id}`,
+      signal: extra.signal,
+      timeoutMs: args.time !== undefined ? args.time * 1000 : undefined,
+      mode: args.mode,
+      model: args.model,
+      ...streamHooks(progressNotifier(extra)),
+    })
+    .then((outcome) => renderOutcome(outcome, session.name, `member \`${id}\`, delegate \`${alias}\``))
+    .catch((err: unknown) => renderMemberError(session.name, err, session.loginHint));
+}
+
+const delegateInput = {
+  task: z
+    .string()
+    .describe(
+      "The implementation task to delegate: goal, scope, and which files/areas this delegate owns (partition the tree when running several delegates). On a follow-up call (same `name`), this is your steering message.",
+    ),
+  context: z.string().optional().describe("Optional background: constraints, relevant paths, prior decisions."),
+  name: z
+    .string()
+    .optional()
+    .describe(
+      "Delegate instance id (short lowercase slug). Re-use the same name to steer that delegate's live session; use different names for parallel delegates. Defaults to the member id.",
+    ),
+  ...modeField,
+  ...modelField,
+  ...timeField,
+};
+
+memberTools.codex.push(
+  server.registerTool(
+    "delegate_codex",
+    {
+      description:
+        "Hand Codex (GPT-5) an implementation task as your delegate coder: it edits files and runs commands in this workspace on its own named session, then reports back (outcome, files changed, verification, blockers). Run several delegates concurrently by issuing parallel tool calls with different `name`s; re-call with the same `name` to steer or follow up. Permissions follow Codex's native ACP mode (default `agent` — sandboxed writes/commands with its internal Guardian review; set `mode` to change, see available_councilors); anything it still escalates (network, outside-workspace paths) pauses 🔐 for your judgement via `permit` — you stay the guardian for risky actions.",
+      inputSchema: delegateInput,
+    },
+    (args, extra) => runDelegate("codex", args, extra),
+  ),
+);
+
+memberTools.claude.push(
+  server.registerTool(
+    "delegate_claude",
+    {
+      description:
+        "Hand Claude (Anthropic) an implementation task as your delegate coder: it edits files and runs commands in this workspace on its own named session, then reports back (outcome, files changed, verification, blockers). Run several delegates concurrently with different `name`s; re-call with the same `name` to steer. Permissions follow Claude's native ACP mode (default `auto` — a classifier judges permission prompts; `acceptEdits`/`bypassPermissions` loosen, `default` routes everything risky to you); whatever it still surfaces pauses 🔐 for your judgement via `permit` — you stay the guardian for risky actions.",
+      inputSchema: delegateInput,
+    },
+    (args, extra) => runDelegate("claude", args, extra),
+  ),
+);
+
+memberTools.grok.push(
+  server.registerTool(
+    "delegate_grok",
+    {
+      description:
+        "Hand Grok (xAI) an implementation task as your delegate coder on its own named session; it reports back when done (outcome, files changed, verification, blockers). Run several delegates concurrently with different `name`s; re-call with the same `name` to steer. Grok reports no ACP permission modes, so its writes and commands pause for your judgement via `permit` (unless the MAGI_COUNCIL_ALLOW_* flags auto-allow them).",
+      inputSchema: delegateInput,
+    },
+    (args, extra) => runDelegate("grok", args, extra),
   ),
 );
 
@@ -714,9 +868,7 @@ async function runMagi(args: MagiArgs, extra: Extra): Promise<ToolResult> {
   // For `fresh`, give each advisor a one-shot session, disposed when this call
   // ends — never the persistent one.
   const ephemeral: Partial<Record<MemberId, AcpSession>> = {};
-  const getSession: SessionFor = fresh
-    ? (id) => (ephemeral[id] ??= new AcpSession(config, specs[id]))
-    : persistentSession;
+  const getSession: SessionFor = fresh ? (id) => (ephemeral[id] ??= advisorSession(id)) : persistentSession;
 
   try {
     return await councilFanOut(
@@ -745,30 +897,38 @@ async function runMagi(args: MagiArgs, extra: Extra): Promise<ToolResult> {
 
 // --- Shared session controls ----------------------------------------------
 
-function renderModelInventory(id: MemberId, inventory: ModelInventory): string {
-  const lines = [`${specs[id].name}:`];
-  lines.push(`  session: ${inventory.sessionStarted ? "started" : "not started"}`);
-  lines.push(`  selector: ${inventory.selector ? `${inventory.selector.name} (${inventory.selector.id})` : "not reported"}`);
-  lines.push(`  current model: ${inventory.currentModel ?? "not reported"}`);
-  if (inventory.models.length === 0) {
-    lines.push("  models: not reported by ACP");
+function renderSelector(label: "model" | "mode", inv: SelectorInventory): string[] {
+  const lines = [
+    `  ${label} selector: ${inv.selector ? `${inv.selector.name} (${inv.selector.id})` : "not reported"}`,
+    `  current ${label}: ${inv.current ?? "not reported"}`,
+  ];
+  if (inv.choices.length === 0) {
+    lines.push(`  ${label}s: not reported by ACP`);
   } else {
-    lines.push("  models:");
-    for (const model of inventory.models) {
-      const label = model.name === model.value ? model.value : `${model.value} (${model.name})`;
-      const group = model.group ? ` [${model.group}]` : "";
-      const current = model.current ? " (current)" : "";
-      lines.push(`    ${label}${group}${current}`);
+    lines.push(`  ${label}s:`);
+    for (const choice of inv.choices) {
+      const name = choice.name === choice.value ? choice.value : `${choice.value} (${choice.name})`;
+      const group = choice.group ? ` [${choice.group}]` : "";
+      lines.push(`    ${name}${group}${choice.current ? " (current)" : ""}`);
     }
   }
-  return lines.join("\n");
+  return lines;
+}
+
+function renderInventory(id: MemberId, inventory: MemberInventory): string {
+  return [
+    `${specs[id].name}:`,
+    `  session: ${inventory.sessionStarted ? "started" : "not started"}`,
+    ...renderSelector("model", inventory.model),
+    ...renderSelector("mode", inventory.mode),
+  ].join("\n");
 }
 
 server.registerTool(
   "available_councilors",
   {
     description:
-      "Start the requested active council members if needed and report the ACP model selector values they expose. Does not send a prompt/model turn; use the listed values with `consult.models` or single-member `model`.",
+      "Start the requested active council members if needed and report the ACP model AND permission-mode selector values they expose. Does not send a prompt turn; use the listed values with `consult.models`, single-member `model`, or a delegate's `mode`/`model`.",
     inputSchema: {
       members: z
         .array(z.enum(["claude", "codex", "grok"]))
@@ -784,7 +944,7 @@ server.registerTool(
     const sections = await Promise.all(
       ids.map(async (id) => {
         try {
-          return renderModelInventory(id, await sessions[id].availableModels(extra.signal));
+          return renderInventory(id, await sessions[id].availableSelectors(extra.signal));
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           return `${specs[id].name}:\n  unavailable: ${msg}`;
@@ -806,42 +966,46 @@ server.registerTool(
   "permit",
   {
     description:
-      "Resolve a permission a member raised mid-turn (when a tool just returned a 🔐 permission). Judge whether the action is reasonable, then allow or deny; the member's suspended turn resumes and runs to its next pause or its answer. Pass `member` if more than one is paused at once. Only valid right after a tool returned a permission request.",
+      "Resolve a permission a member or delegate raised mid-turn (when a tool just returned a 🔐 permission). Judge whether the action is reasonable, then allow or deny; the suspended turn resumes and runs to its next pause or its answer. Pass `member` (and `delegate` for a delegate_X session) if more than one is paused at once. Only valid right after a tool returned a permission request.",
     inputSchema: {
       decision: z.enum(["allow", "deny"]).describe("Whether to let the member perform the requested action."),
       member: z
         .enum(["claude", "codex", "grok"])
         .optional()
-        .describe("Which member to resolve. Optional when only one is paused; required if more than one is."),
+        .describe("Which member to resolve. Optional when only one session is paused; required if more than one is."),
+      delegate: z
+        .string()
+        .optional()
+        .describe("Delegate name to resolve, for a permission raised by a delegate_X tool (combine with `member`)."),
       note: z.string().optional().describe("Optional short reason for the decision (recorded in the debug log)."),
       ...timeField,
     },
   },
-  ({ decision, member, note, time }, extra) => {
-    const candidateIds = (member ? [member as MemberId] : activeIds()).filter(isActive);
-    const pending = candidateIds.filter((id) => sessions[id].isAwaitingPermission());
+  ({ decision, member, delegate, note, time }, extra) => {
+    // Candidates: advisor sessions (unless a delegate was named) plus delegates,
+    // narrowed by `member`/`delegate`, then filtered to those actually paused.
+    const pending = [
+      ...(delegate
+        ? []
+        : activeIds()
+            .filter((id) => !member || id === member)
+            .map((id) => ({ key: id as string, session: sessions[id] }))),
+      ...[...delegates.values()]
+        .filter((d) => (!member || d.member === member) && (!delegate || d.alias === delegate))
+        .map((d) => ({ key: `${d.member}:${d.alias}`, session: d.session })),
+    ].filter((c) => c.session.isAwaitingPermission());
     if (pending.length === 0) {
-      const who = member ?? "any member";
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `No pending permission to resolve for ${who} — it may have already completed or been superseded by a newer request.`,
-          },
-        ],
-      };
+      const who = [member, delegate && `delegate ${delegate}`].filter(Boolean).join(" ") || "any member or delegate";
+      return textResult(
+        `No pending permission to resolve for ${who} — it may have already completed or been superseded by a newer request.`,
+      );
     }
     if (pending.length > 1) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `More than one member is paused awaiting a decision (${pending.join(", ")}) — call **permit** again with \`member\` set to one of them.`,
-          },
-        ],
-      };
+      return textResult(
+        `More than one session is paused awaiting a decision (${pending.map((c) => c.key).join(", ")}) — call **permit** again with \`member\` (and \`delegate\` for a delegate) set to one of them.`,
+      );
     }
-    const target = sessions[pending[0]!];
+    const target = pending[0]!.session;
     return target
       .permit(
         decision === "allow",
@@ -874,19 +1038,16 @@ server.registerTool(
   "reset",
   {
     description:
-      "Drop the accumulated session context for ALL members and start fresh. Use when switching to an unrelated task, when a member seems confused or its context has grown stale, or to clear a turn wedged awaiting a permit (this clears any pending permits). The next call to each member spins up a brand-new session. (When the host is Claude Code, this also happens automatically on /clear if the SessionStart hook is installed — see the README.)",
+      "Drop the accumulated session context for ALL members, dismiss all delegates, and start fresh. Use when switching to an unrelated task, when a member seems confused or its context has grown stale, or to clear a turn wedged awaiting a permit (this clears any pending permits). The next call to each member spins up a brand-new session. (When the host is Claude Code, this also happens automatically on /clear if the SessionStart hook is installed — see the README.)",
     inputSchema: {},
   },
   () => {
     for (const id of MEMBER_IDS) sessions[id].reset();
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: "All member sessions reset — the next call to each starts a fresh session with no prior context.",
-        },
-      ],
-    };
+    for (const d of delegates.values()) d.session.dispose();
+    delegates.clear();
+    return textResult(
+      "All member sessions reset and delegates dismissed — the next call to each member starts a fresh session with no prior context.",
+    );
   },
 );
 
@@ -909,6 +1070,9 @@ server.registerTool(
       `council: ${activeIds().map((i) => specs[i].name).join(", ")}`,
       "",
       ...activeIds().map((id) => renderStatus(sessions[id].status())),
+      ...(delegates.size > 0
+        ? ["", `delegates (${delegates.size}/${MAX_DELEGATES}):`, ...[...delegates.values()].map((d) => renderStatus(d.session.status()))]
+        : []),
     ];
     return { content: [{ type: "text" as const, text: lines.join("\n") }] };
   },
@@ -921,7 +1085,8 @@ function renderStatus(s: SessionStatus): string {
     `  acp command: ${s.acpCommand}`,
     `  guardian: external-reads ${onoff(s.guardian.externalReads)} · writes ${onoff(s.guardian.writes)} · commands ${onoff(s.guardian.commands)}`,
     `  session: ${s.sessionStarted ? "started" : "not started"} · subprocess: ${s.childAlive ? "alive" : "down"}`,
-    `  model: ${s.currentModel ?? "not reported"}`,
+    `  model: ${s.currentModel ?? "not reported"} · mode: ${s.currentMode ?? "not reported"}`,
+    ...(s.modePinWarning ? [`  ⚠️ ${s.modePinWarning}`] : []),
     `  ${s.pendingPermission ? `awaiting permit: ${s.pendingPermission}` : "no pending permission"}`,
     s.stderrTail ? `  recent stderr:\n${s.stderrTail}` : "  no stderr captured",
   ].join("\n");
@@ -943,11 +1108,15 @@ server.server.oninitialized = (): void => {
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
-process.on("SIGINT", () => {
+function disposeAll(): void {
   for (const id of MEMBER_IDS) sessions[id].dispose();
+  for (const d of delegates.values()) d.session.dispose();
+}
+process.on("SIGINT", () => {
+  disposeAll();
   process.exit(0);
 });
 process.on("SIGTERM", () => {
-  for (const id of MEMBER_IDS) sessions[id].dispose();
+  disposeAll();
   process.exit(0);
 });

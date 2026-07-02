@@ -44,9 +44,12 @@ verified by live ACP probes against codex-acp, claude-agent-acp, and grok.
   self-approve a workspace write even in `read-only` mode without surfacing a
   request — for Codex, modes steer but are not a hard boundary; our guardian
   remains the backstop only for what codex chooses to surface.
-- **`permit` scope shrinks accordingly**: it applies only to requests the agent
-  still surfaces (claude `default`, grok, codex escalations). A delegate in a
-  native auto mode mostly won't round-trip — that's the point.
+- **The host stays the guardian as a fallback**: delegate turns keep the
+  suspend-on-ask guardian, so any request the agent still surfaces (codex
+  escalations — network, outside-workspace paths; claude `default` prompts;
+  everything on Grok) pauses 🔐 for the host's `permit` judgement. A delegate in
+  a native auto mode mostly won't round-trip — that's the point — but risky
+  escalations always land with the host.
 - **Steering**: re-call `delegate_X` with the same `name` — the new turn lands on
   the live session with its accumulated context. The initial call gets full
   implementation-agent framing plus a report contract (what changed, files touched,

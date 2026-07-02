@@ -144,6 +144,34 @@ export function explorePrompt(advisor: string, host: string, focus?: string, pat
   );
 }
 
+/**
+ * A delegated implementation task (the `delegate_X` tools, ADR 0018): the member
+ * works as a coder managed by the host — it does the work itself, then reports.
+ * Not a reviewer turn, so no debate/verdict framing.
+ */
+export function delegatePrompt(advisor: string, host: string, task: string, context?: string): string {
+  return [
+    `You are ${advisor}, working as a delegate implementer for ${host}, the agent managing this repository. ${host} has delegated a task to you: do the work yourself — read what you need, make the changes, and verify them. ${host} reviews your report, so report accurately.`,
+    `<task>\n${task.trim()}\n</task>`,
+    withContext(context),
+    `<execution_rules>\nStay within this workspace and the task's scope. Prefer the smallest change that completes the task, matching the repository's existing conventions. Verify your work (build, tests, or a quick run) where possible. Other delegates may be working elsewhere in the tree — touch only what your task needs. If an action pauses for ${host}'s permission, continue once it's resolved. If the task is under-specified or impossible, stop and report exactly what's missing instead of guessing.\n</execution_rules>`,
+    `<report_contract>\nWhen done, report tersely:\n1. Outcome — what you did, in 1–3 sentences.\n2. Files changed — paths.\n3. Verification — commands/tests you ran and their results (or why none).\n4. Blockers / follow-ups — if any.\nNo preamble.\n</report_contract>`,
+  ]
+    .filter((b) => b.length > 0)
+    .join("\n\n");
+}
+
+/** A follow-up steering turn from the manager on a delegate's live session. */
+export function delegateSteerPrompt(host: string, message: string, context?: string): string {
+  return [
+    `<manager_update>\n${message.trim()}\n</manager_update>`,
+    withContext(context),
+    `This is a follow-up from ${host} (your manager) on the same delegated work — continue with it. When done, report again: outcome, files changed, verification, blockers. No preamble.`,
+  ]
+    .filter((b) => b.length > 0)
+    .join("\n\n");
+}
+
 /** Grok's extra capabilities, advertised so it leans on them when relevant. */
 const GROK_STRENGTHS = `<grok_strengths>
 You have live web and X (Twitter) search, current-events knowledge, and image/video generation. Lean on these when the question benefits from real-time information, an X/web lookup, or generated media. Cite sources when you searched.

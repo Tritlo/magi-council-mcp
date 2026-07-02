@@ -49,14 +49,27 @@ keeping one persistent session per member per workspace.
 | `brainstorm` | get 2–4 alternative approaches with trade-offs + a recommendation |
 | `explore` | map an unfamiliar codebase (structure, components, flow, conventions) |
 
+**Delegates** — members as managed coders, working under you (ADR 0018; a member's tool appears only when it isn't the host):
+
+| Tool | Use it to… |
+|------|-----------|
+| `delegate_codex` | hand Codex an implementation task on its own named session (default mode `agent`: sandboxed writes/commands) |
+| `delegate_claude` | hand Claude an implementation task (default mode `auto`: classifier-judged permissions) |
+| `delegate_grok` | hand Grok an implementation task (no ACP modes — writes/commands pause for your `permit`) |
+
+Each named delegate is a **separate session** from the member's advisor, so several can
+work concurrently — issue parallel tool calls with different `name`s, and partition the
+tree between them in the task text. Re-call with the same `name` to steer that delegate
+on its live context. Delegates report back: outcome, files changed, verification, blockers.
+
 **Shared:**
 
 | Tool | Use it to… |
 |------|-----------|
-| `permit` | allow/deny a permission a member raised mid-turn, then resume it (pass `member` if more than one is paused) |
-| `reset` | drop **all** members' accumulated context and start fresh sessions |
-| `status` | report the resolved host, the active council, and each active member's health |
-| `available_councilors` | start active members if needed and report ACP model selector values |
+| `permit` | allow/deny a permission a member or delegate raised mid-turn, then resume it (pass `member`, plus `delegate` for a delegate session) |
+| `reset` | drop **all** members' accumulated context, dismiss all delegates, and start fresh sessions |
+| `status` | report the resolved host, the active council, live delegates, and each session's health |
+| `available_councilors` | start active members if needed and report ACP model **and permission-mode** selector values |
 
 All tools are **advisory** — the members answer, you decide. A member's direct
 tools (`ask_*`/`*_reply`) appear **only when that member isn't the host**; the
@@ -172,6 +185,21 @@ no multi-round deliberation). Since council mode is read-only, a `member:"counci
 `grok_generate` (it writes a file, which read-only council mode would block); the
 council is aware of the capability and will suggest it rather than do it.
 
+### Permission modes (advisors restricted, delegates native)
+
+Members expose their own permission modes over ACP (codex: `read-only` / `agent` /
+`agent-full-access`; claude: `auto` / `default` / `acceptEdits` / …; grok: none),
+discovered at session start like models — `available_councilors` lists them.
+**Advisor sessions are pinned to restricted modes** (codex → `read-only`, claude →
+`default`) so an agent's permissive default can't self-approve writes behind the
+guardian's back; if a pin can't apply, `status` shows a ⚠️ warning. **Delegate
+sessions use the member's native mode** — the agent's default, or a per-call
+`mode` (sticky for that delegate's session). Whatever a mode still escalates
+(network, out-of-workspace paths, everything on Grok) pauses for the host via
+`permit` — the host stays the guardian for risky actions. Note: codex's internal
+Guardian Review can self-approve workspace writes even in `read-only` mode
+(verified live) — for Codex, modes steer but are not a hard boundary.
+
 ### Permissions: the host is the guardian
 
 When a member wants to do something guardian doesn't auto-allow, the turn **pauses
@@ -232,7 +260,7 @@ The server keeps **one persistent session per member per workspace** so each
 accumulates context across calls (a collaborator, not a stateless oracle). That
 context outlives the host's `/clear` — the MCP server isn't restarted then — so
 without help the next conversation would land on members that still remember the
-last one. `reset` clears **all** members. Two ways to clear it:
+last one. `reset` clears **all** members and dismisses all delegates. Two ways to clear it:
 
 - **Automatic, on `/clear`** — install the `SessionStart` hook below. It writes
   the new session id to a per-workspace nonce file; the server notices the change
@@ -403,7 +431,7 @@ src/prompts.ts      host-parameterized prompts per tool (Codex/Grok/Claude, magi
 src/session.ts      AcpSession — ACP client: spawn a member, model config, persistent session, streaming ask()
 src/reset.ts        per-workspace reset-nonce path (shared by server + hook)
 src/log.ts          per-turn debug log (stderr summary + optional JSONL file)
-src/index.ts        MCP server: 3 member sessions, host detection + tool gating, the Magi council
+src/index.ts        MCP server: 3 member sessions, host detection + tool gating, the Magi council, delegates
 hooks/session-reset.ts  SessionStart hook: reset members on the host's /clear (Claude Code)
 test/fake-acp.ts    a scripted ACP agent subprocess for tests (behavior by --scenario)
 test/*.test.ts      bun test: AcpSession lifecycle (E2E vs the fake) + pure council logic

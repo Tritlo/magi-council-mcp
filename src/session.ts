@@ -116,6 +116,8 @@ export interface AskOptions {
   timeoutMs?: number;
   /** Optional ACP model selector value/name to use before sending this turn. */
   model?: string;
+  /** Optional ACP permission-mode selector value/name to use before sending this turn. */
+  mode?: string;
   /**
    * How to handle a guardian "ask" verdict for this turn. `"suspend"` (the
    * default) hands the decision back to Claude as a permission and pauses the
@@ -165,14 +167,18 @@ export interface SessionStatus {
   sessionStarted: boolean;
   /** Current ACP model selector value, when the member reports one. */
   currentModel?: string;
+  /** Current ACP permission-mode selector value, when the member reports one. */
+  currentMode?: string;
+  /** Set when a requested mode pin couldn't be applied at session start. */
+  modePinWarning?: string;
   childAlive: boolean;
   /** Description of a permission currently awaiting Claude's decision, if any. */
   pendingPermission?: string;
   stderrTail: string;
 }
 
-/** One model choice reported by a member's ACP session config. */
-export interface ModelChoice {
+/** One choice reported by a member's ACP select config option (model or mode). */
+export interface SelectorChoice {
   value: string;
   name: string;
   description?: string;
@@ -180,13 +186,33 @@ export interface ModelChoice {
   current: boolean;
 }
 
-/** Model selector inventory for one council member. */
-export interface ModelInventory {
+/** One ACP select config option's inventory: the selector, if reported, plus its choices. */
+export interface SelectorInventory {
+  selector?: { id: string; name: string };
+  current?: string;
+  choices: SelectorChoice[];
+}
+
+/** Model + permission-mode selector inventory for one council member. */
+export interface MemberInventory {
   name: string;
   sessionStarted: boolean;
-  selector?: { id: string; name: string };
-  currentModel?: string;
-  models: ModelChoice[];
+  model: SelectorInventory;
+  mode: SelectorInventory;
+}
+
+/** The ACP select config categories the server drives (ADR 0017 models, ADR 0018 modes). */
+type SelectorCategory = "model" | "mode";
+
+/** Per-session options (beyond the shared config and member spec). */
+export interface SessionOptions {
+  /**
+   * ACP permission-mode value to select right after the session starts. Advisor
+   * sessions pin restricted modes (ADR 0018) so agents can't self-approve writes.
+   * Best-effort: skipped with a {@link SessionStatus.modePinWarning} when the
+   * agent doesn't offer it (Grok reports no modes); never fails startup.
+   */
+  pinnedMode?: string;
 }
 
 /**
@@ -245,9 +271,15 @@ export class AcpSession {
   // session id on /clear) drops the member's context on the next turn.
   private lastNonce?: string;
 
-  constructor(config: Config, member: MemberSpec) {
+  // Mode pin requested for this session (advisor sessions), and why it wasn't
+  // applied when that happens — surfaced via status(), never a startup failure.
+  private readonly pinnedMode?: string;
+  private modePinWarning?: string;
+
+  constructor(config: Config, member: MemberSpec, opts: SessionOptions = {}) {
     this.config = config;
     this.member = member;
+    this.pinnedMode = opts.pinnedMode;
     this.lastNonce = this.readResetNonce(); // baseline — only a later change resets
   }
 
@@ -266,17 +298,17 @@ export class AcpSession {
     return this.awaitingDecision !== undefined;
   }
 
-  private modelOption(): SessionConfigOption | undefined {
-    const modelOptions = this.configOptions.filter((o) => o.type === "select" && o.category === "model");
+  private selectorOption(category: SelectorCategory): SessionConfigOption | undefined {
+    const exact = this.configOptions.filter((o) => o.type === "select" && o.category === category);
     return (
-      modelOptions[0] ??
+      exact[0] ??
       this.configOptions.find(
-        (o) => o.type === "select" && `${o.id} ${o.name} ${o.category ?? ""}`.toLowerCase().includes("model"),
+        (o) => o.type === "select" && `${o.id} ${o.name} ${o.category ?? ""}`.toLowerCase().includes(category),
       )
     );
   }
 
-  private modelChoices(option: SessionConfigOption): ModelChoice[] {
+  private selectorChoices(option: SessionConfigOption): SelectorChoice[] {
     if (option.type !== "select") return [];
     return option.options.flatMap((entry) => {
       if ("group" in entry) {
@@ -299,37 +331,45 @@ export class AcpSession {
     });
   }
 
-  private modelInventory(): ModelInventory {
-    const option = this.modelOption();
-    const choices = option ? this.modelChoices(option) : [];
+  private selectorInventory(category: SelectorCategory): SelectorInventory {
+    const option = this.selectorOption(category);
+    const choices = option ? this.selectorChoices(option) : [];
     const current = choices.find((c) => c.current);
     return {
-      name: this.member.name,
-      sessionStarted: this.sessionId !== undefined,
       selector: option ? { id: option.id, name: option.name } : undefined,
-      currentModel: current?.value ?? (option?.type === "select" ? option.currentValue : undefined),
-      models: choices,
+      current: current?.value ?? (option?.type === "select" ? option.currentValue : undefined),
+      choices,
     };
   }
 
-  private async selectModel(model: string | undefined): Promise<void> {
-    const requested = model?.trim();
+  private inventory(): MemberInventory {
+    return {
+      name: this.member.name,
+      sessionStarted: this.sessionId !== undefined,
+      model: this.selectorInventory("model"),
+      mode: this.selectorInventory("mode"),
+    };
+  }
+
+  /** Select a model/mode config value on the live session (no-op when unset or already current). */
+  private async selectConfig(category: SelectorCategory, value: string | undefined): Promise<void> {
+    const requested = value?.trim();
     if (!requested) return;
-    const option = this.modelOption();
-    if (!option) throw new Error(`${this.member.name} does not report an ACP model selector`);
-    const choices = this.modelChoices(option);
+    const option = this.selectorOption(category);
+    if (!option) throw new Error(`${this.member.name} does not report an ACP ${category} selector`);
+    const choices = this.selectorChoices(option);
     const requestedLower = requested.toLowerCase();
     const choice =
       choices.find((c) => c.value === requested || c.name === requested) ??
       choices.find((c) => c.value.toLowerCase() === requestedLower || c.name.toLowerCase() === requestedLower);
     if (!choice) {
       const available = choices.length > 0 ? choices.map((c) => c.value).join(", ") : "(none reported)";
-      throw new Error(`${this.member.name} does not report model ${requested}. Available models: ${available}`);
+      throw new Error(`${this.member.name} does not report ${category} ${requested}. Available ${category}s: ${available}`);
     }
     if (choice.value === option.currentValue) return;
     if (!this.conn || !this.sessionId) throw new Error(`${this.member.name} session is not started`);
-    this.turnLog.push(`model selected: ${choice.value}`);
-    this.turnOnActivity?.(`model: ${choice.value}`);
+    this.turnLog.push(`${category} selected: ${choice.value}`);
+    this.turnOnActivity?.(`${category}: ${choice.value}`);
     const updated = await this.conn.setSessionConfigOption({
       sessionId: this.sessionId,
       configId: option.id,
@@ -338,12 +378,12 @@ export class AcpSession {
     this.configOptions = updated.configOptions ?? [];
   }
 
-  /** Start the member if needed and return its ACP-reported model selector. */
-  async availableModels(signal?: AbortSignal): Promise<ModelInventory> {
+  /** Start the member if needed and return its ACP-reported selectors (models + modes). */
+  async availableSelectors(signal?: AbortSignal): Promise<MemberInventory> {
     this.checkSessionEpoch();
     const ok = await this.ensureStartedAbortable(signal);
     if (!ok) throw new Error(`${this.member.name} startup cancelled`);
-    return this.modelInventory();
+    return this.inventory();
   }
 
   private pickOption(options: PermissionOption[], allow: boolean): PermissionOption | undefined {
@@ -562,6 +602,16 @@ export class AcpSession {
       if (this.child !== child) throw new Error(`${this.member.name} startup superseded`);
       this.sessionId = session.sessionId;
       this.configOptions = session.configOptions ?? [];
+      if (this.pinnedMode) {
+        this.modePinWarning = undefined;
+        try {
+          await this.selectConfig("mode", this.pinnedMode);
+        } catch (pinErr) {
+          // Advisory: the agent may not offer the mode (Grok reports none).
+          // Surface via status() rather than failing startup.
+          this.modePinWarning = `mode pin "${this.pinnedMode}" not applied: ${(pinErr as Error).message}`;
+        }
+      }
     } catch (err) {
       const tail = this.stderr.join("").trim().slice(-600);
       // Don't leak the half-started subprocess; reset so the next call respawns.
@@ -743,7 +793,8 @@ export class AcpSession {
         this.finish(id);
         return { type: "answer", result };
       }
-      await this.selectModel(opts.model);
+      await this.selectConfig("mode", opts.mode);
+      await this.selectConfig("model", opts.model);
     } catch (err) {
       this.finish(id);
       throw err;
@@ -958,7 +1009,9 @@ export class AcpSession {
         commands: this.config.allowCommands,
       },
       sessionStarted: this.sessionId !== undefined,
-      currentModel: this.modelInventory().currentModel,
+      currentModel: this.selectorInventory("model").current,
+      currentMode: this.selectorInventory("mode").current,
+      modePinWarning: this.modePinWarning,
       childAlive: child !== undefined && child.exitCode === null && !child.killed,
       pendingPermission: this.awaitingDecision?.description,
       stderrTail: this.stderr.join("").trim().slice(-600),
