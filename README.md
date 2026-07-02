@@ -55,7 +55,7 @@ keeping one persistent session per member per workspace.
 |------|-----------|
 | `delegate_codex` | hand Codex an implementation task on its own named session (default mode `agent`: sandboxed writes/commands) |
 | `delegate_claude` | hand Claude an implementation task (default mode `auto`: classifier-judged permissions) |
-| `delegate_grok` | hand Grok an implementation task (no ACP modes — writes/commands pause for your `permit`) |
+| `delegate_grok` | hand Grok an implementation task (no ACP modes; may write without asking — review its diff) |
 
 Each named delegate is a **separate session** from the member's advisor, so several can
 work concurrently — issue parallel tool calls with different `name`s, and partition the
@@ -195,10 +195,12 @@ discovered at session start like models — `available_councilors` lists them.
 guardian's back; if a pin can't apply, `status` shows a ⚠️ warning. **Delegate
 sessions use the member's native mode** — the agent's default, or a per-call
 `mode` (sticky for that delegate's session). Whatever a mode still escalates
-(network, out-of-workspace paths, everything on Grok) pauses for the host via
-`permit` — the host stays the guardian for risky actions. Note: codex's internal
-Guardian Review can self-approve workspace writes even in `read-only` mode
-(verified live) — for Codex, modes steer but are not a hard boundary.
+(network, out-of-workspace paths) pauses for the host via `permit` — the host
+stays the guardian for risky actions. But the permit fallback only gates what an
+agent chooses to surface: codex's internal Guardian Review can self-approve
+workspace writes even in `read-only` mode, and Grok has been observed writing
+workspace files without asking (both verified live). Modes steer; they are not a
+hard boundary — review a delegate's diff.
 
 ### Permissions: the host is the guardian
 

@@ -600,7 +600,7 @@ memberTools.grok.push(
     "delegate_grok",
     {
       description:
-        "Hand Grok (xAI) an implementation task as your delegate coder on its own named session; it reports back when done (outcome, files changed, verification, blockers). Run several delegates concurrently with different `name`s; re-call with the same `name` to steer. Grok reports no ACP permission modes, so its writes and commands pause for your judgement via `permit` (unless the MAGI_COUNCIL_ALLOW_* flags auto-allow them).",
+        "Hand Grok (xAI) an implementation task as your delegate coder on its own named session; it reports back when done (outcome, files changed, verification, blockers). Run several delegates concurrently with different `name`s; re-call with the same `name` to steer. Grok reports no ACP permission modes; actions it escalates pause 🔐 for your judgement via `permit`, but it has been observed writing workspace files WITHOUT surfacing a request — partition its work and review its diff like any delegate's.",
       inputSchema: delegateInput,
     },
     (args, extra) => runDelegate("grok", args, extra),

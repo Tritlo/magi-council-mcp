@@ -84,4 +84,6 @@ delegate paused on a permission blocks only itself; others keep running. Concurr
 delegates share one working tree — the manager partitions work, and overlapping
 edits are its mistake to avoid. Trust boundaries are per-member and explicit:
 claude modes enforce through our permit loop, codex modes are steering plus its own
-guardian, grok has no modes at all.
+guardian, grok has no modes at all — and was observed (first live run) writing a
+workspace file without surfacing a permission, so the permit fallback gates only
+what an agent chooses to surface, for every member.
