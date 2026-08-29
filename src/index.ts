@@ -24,6 +24,7 @@ import {
 import {
   askClaudePrompt,
   askCodexPrompt,
+  askCopilotPrompt,
   askGrokPrompt,
   brainstormPrompt,
   delegatePrompt,
@@ -36,8 +37,8 @@ import {
   reviewPlanPrompt,
 } from "./prompts.ts";
 
-// The ACP agents (esp. Grok) emit `_x.ai/*` extension notifications and stray
-// responses the ACP SDK can't route; it logs each via console.error as "Error
+// ACP agents can emit extension notifications and stray responses the SDK can't
+// route; it logs each via console.error as "Error
 // handling notification" / "Got response to unknown request". They're harmless
 // protocol cross-talk but spam the MCP logs, so drop just those lines and pass
 // everything else through.
@@ -49,15 +50,21 @@ console.error = ((...args: unknown[]): void => {
 }) as typeof console.error;
 
 const config = loadConfig();
-const specs: Record<MemberId, MemberSpec> = { claude: config.claude, codex: config.codex, grok: config.grok };
+const memberIds = config.memberIds;
+const specs: Record<MemberId, MemberSpec> = {
+  claude: config.claude,
+  codex: config.codex,
+  copilot: config.copilot,
+  grok: config.grok,
+};
 
 /**
  * Restricted permission modes pinned on ADVISOR sessions at start (ADR 0018):
  * advisors deliberate, and the agents' own defaults (codex `agent`, claude `auto`)
  * self-approve writes without our guardian ever seeing a request. Best-effort —
- * skipped with a status warning when the agent doesn't offer the mode (Grok
- * reports none). Delegate sessions are NOT pinned; they use the agent's native
- * modes (default or per-call `mode`).
+ * skipped with a status warning when an agent doesn't offer the mode. Delegate
+ * sessions are NOT pinned; they use the agent's native modes (default or per-call
+ * `mode`).
  */
 const ADVISOR_MODE: Partial<Record<MemberId, string>> = { codex: "read-only", claude: "default" };
 const advisorSession = (id: MemberId): AcpSession =>
@@ -66,6 +73,7 @@ const advisorSession = (id: MemberId): AcpSession =>
 const sessions: Record<MemberId, AcpSession> = {
   claude: advisorSession("claude"),
   codex: advisorSession("codex"),
+  copilot: advisorSession("copilot"),
   grok: advisorSession("grok"),
 };
 
@@ -75,7 +83,7 @@ type ToolResult = { content: Array<{ type: "text"; text: string }> };
 // --- host resolution ------------------------------------------------------
 // The agent driving the MCP (the client) is the council host and is excluded
 // from its own council. Resolution order: MAGI_COUNCIL_EXCLUDE (startup) >
-// clientInfo regex > unknown (exclude nobody — all three participate, and one
+// clientInfo regex > unknown (exclude nobody — all roster members participate, and one
 // may be the host). The `source` is surfaced so an unrecognized host knows it can
 // set the env var to exclude itself (see status / ask_magi warning).
 
@@ -92,6 +100,7 @@ function detectFromClientInfo(name: string | undefined): MemberId | undefined {
   if (!name) return undefined;
   if (/claude/i.test(name)) return "claude";
   if (/codex/i.test(name)) return "codex";
+  if (/copilot/i.test(name)) return "copilot";
   if (/grok/i.test(name)) return "grok";
   return undefined;
 }
@@ -108,8 +117,12 @@ function resolveHost(): HostResolution {
   return resolved;
 }
 
-const isActive = (id: MemberId): boolean => resolveHost().excluded !== id;
-const activeIds = (): MemberId[] => MEMBER_IDS.filter(isActive);
+const isEnabled = (id: MemberId): boolean => memberIds.includes(id);
+const isActive = (id: MemberId): boolean => isEnabled(id) && resolveHost().excluded !== id;
+const activeIds = (): MemberId[] => memberIds.filter(isActive);
+const memberSchema = z.enum(MEMBER_IDS as [MemberId, ...MemberId[]]);
+const askToolNames = memberIds.map((id) => `ask_${id}`).join(" / ");
+const replyToolNames = memberIds.map((id) => `${id}_reply`).join(" / ");
 /** The host's display name for prompt framing (generic when the host is unknown). */
 const hostName = (): string => {
   const e = resolveHost().excluded;
@@ -189,6 +202,12 @@ function renderMemberError(name: string, err: unknown, loginHint?: string): Tool
 
 /** Result for a direct tool whose member is the host (excluded from the council). */
 function inactiveResult(id: MemberId): ToolResult {
+  if (!isEnabled(id)) {
+    return textResult(
+      `${specs[id].name} is not in the council roster. Add \`${id}\` to ` +
+        "`MAGI_COUNCIL_MEMBERS` and restart magi-council to enable it.",
+    );
+  }
   const how = resolveHost().source === "env" ? "set by MAGI_COUNCIL_EXCLUDE" : "detected as the host";
   return {
     content: [
@@ -294,7 +313,7 @@ const effortField = {
 };
 const modelsField = {
   models: z
-    .object({ claude: modelValue.optional(), codex: modelValue.optional(), grok: modelValue.optional() })
+    .object({ claude: modelValue.optional(), codex: modelValue.optional(), copilot: modelValue.optional(), grok: modelValue.optional() })
     .optional()
     .describe(
       "Optional per-member ACP model selector values/names for a council fan-out, e.g. { codex: \"...\", claude: \"...\" }. Values come from available_councilors.",
@@ -302,7 +321,7 @@ const modelsField = {
 };
 const effortsField = {
   efforts: z
-    .object({ claude: modelValue.optional(), codex: modelValue.optional(), grok: modelValue.optional() })
+    .object({ claude: modelValue.optional(), codex: modelValue.optional(), copilot: modelValue.optional(), grok: modelValue.optional() })
     .optional()
     .describe(
       "Optional per-member ACP thought_level (reasoning effort) selector values/names for a council fan-out, e.g. { codex: \"high\", claude: \"medium\" }. Values come from available_councilors.",
@@ -316,10 +335,10 @@ const modeField = {
     ),
 };
 
-const server = new McpServer({ name: "magi-council", version: "0.2.0" });
+const server = new McpServer({ name: "magi-council", version: "0.3.0" });
 
 // Tool handles per member, so the host's direct tools can be removed once known.
-const memberTools: Record<MemberId, Array<{ remove(): void }>> = { claude: [], codex: [], grok: [] };
+const memberTools: Record<MemberId, Array<{ remove(): void }>> = { claude: [], codex: [], copilot: [], grok: [] };
 
 // --- Codex tools ----------------------------------------------------------
 
@@ -410,6 +429,49 @@ memberTools.claude.push(
   ),
 );
 
+// --- Copilot tools --------------------------------------------------------
+
+memberTools.copilot.push(
+  server.registerTool(
+    "ask_copilot",
+    {
+      description:
+        "Ask GitHub Copilot directly for an independent second opinion. Continue with `copilot_reply`.",
+      inputSchema: {
+        question: z.string().describe("The specific question or task to put to Copilot."),
+        context: z.string().optional().describe("Optional background, constraints, or relevant snippets."),
+        ...modelField,
+        ...effortField,
+        ...timeField,
+      },
+    },
+    ({ question, context, time, model, effort }, extra) =>
+      isActive("copilot")
+        ? ask("copilot", askCopilotPrompt(hostName(), question, context), extra, "ask_copilot", time, model, effort)
+        : inactiveResult("copilot"),
+  ),
+);
+
+memberTools.copilot.push(
+  server.registerTool(
+    "copilot_reply",
+    {
+      description:
+        "Continue the conversation with Copilot on the SAME session (it remembers the thread). Use to push back on or follow up Copilot's last answer.",
+      inputSchema: {
+        message: z.string().describe("Your rebuttal, counter-point, or follow-up question for Copilot."),
+        ...modelField,
+        ...effortField,
+        ...timeField,
+      },
+    },
+    ({ message, time, model, effort }, extra) =>
+      isActive("copilot")
+        ? ask("copilot", replyPrompt(hostName(), message), extra, "copilot_reply", time, model, effort)
+        : inactiveResult("copilot"),
+  ),
+);
+
 // --- Grok tools -----------------------------------------------------------
 
 memberTools.grok.push(
@@ -417,7 +479,7 @@ memberTools.grok.push(
     "ask_grok",
     {
       description:
-        "Ask Grok (xAI) directly — an independent second opinion with live web and X (Twitter) search, current-events knowledge, and image/video generation. Reach for it when the question needs real-time info, an X/web lookup, or a different model's take; for generated media use `grok_generate`. Grok continues the thread; follow up with `grok_reply`.",
+        "Ask Grok (xAI) directly for a second opinion with live web/X search and current-events knowledge. Continue with `grok_reply`; for generated media use `grok_generate`.",
       inputSchema: {
         question: z.string().describe("The specific question or task to put to Grok."),
         context: z.string().optional().describe("Optional background, constraints, or relevant snippets."),
@@ -431,9 +493,6 @@ memberTools.grok.push(
         ? ask("grok", askGrokPrompt(hostName(), question, context), extra, "ask_grok", time, model, effort)
         : inactiveResult("grok"),
   ),
-);
-
-memberTools.grok.push(
   server.registerTool(
     "grok_reply",
     {
@@ -451,24 +510,15 @@ memberTools.grok.push(
         ? ask("grok", replyPrompt(hostName(), message), extra, "grok_reply", time, model, effort)
         : inactiveResult("grok"),
   ),
-);
-
-memberTools.grok.push(
   server.registerTool(
     "grok_generate",
     {
       description:
-        "Generate an image or short video with Grok (xAI) and save it into the workspace — diagrams, mockups, illustrations, or short clips. Saving the file needs a write permission, so this usually pauses with a 🔐 — approve it with `permit` to let Grok write the result. Media generation (video especially) is heavier and slower than text.",
+        "Generate an image or short video with Grok and save it into the workspace. Grok may ask for permission to write the output file.",
       inputSchema: {
-        prompt: z.string().describe("What to generate — a detailed description of the image or video."),
-        kind: z
-          .enum(["image", "video"])
-          .optional()
-          .describe("Media type. Defaults to image. Video is slower and costs more usage."),
-        output_path: z
-          .string()
-          .optional()
-          .describe("Optional path/filename to save to (relative to the workspace). Omit to let Grok choose."),
+        prompt: z.string().describe("What to generate."),
+        kind: z.enum(["image", "video"]).optional().describe("Media type. Defaults to image."),
+        output_path: z.string().optional().describe("Optional workspace-relative output path."),
         ...modelField,
         ...effortField,
         ...timeField,
@@ -486,8 +536,7 @@ memberTools.grok.push(
 // session, so several delegates can work concurrently (the host issues parallel
 // tool calls) and coding context never bleeds into the advisor debates.
 // Permissions follow the member's native ACP mode — the delegate sessions are not
-// pinned like advisors. Grok reports no modes, so its writes/commands surface to
-// the host via `permit` as before.
+// pinned like advisors.
 
 interface Delegate {
   member: MemberId;
@@ -632,12 +681,24 @@ memberTools.claude.push(
   ),
 );
 
+memberTools.copilot.push(
+  server.registerTool(
+    "delegate_copilot",
+    {
+      description:
+        "Hand GitHub Copilot an implementation task as your delegate coder on its own named session; it reports back when done. Run several delegates concurrently with different `name`s; re-call with the same `name` to steer. Permissions follow Copilot CLI's native ACP behavior; whatever it escalates pauses 🔐 for your judgement via `permit` — review its diff like any delegate's.",
+      inputSchema: delegateInput,
+    },
+    (args, extra) => runDelegate("copilot", args, extra),
+  ),
+);
+
 memberTools.grok.push(
   server.registerTool(
     "delegate_grok",
     {
       description:
-        "Hand Grok (xAI) an implementation task as your delegate coder on its own named session; it reports back when done (outcome, files changed, verification, blockers). Run several delegates concurrently with different `name`s; re-call with the same `name` to steer. Grok reports no ACP permission modes; actions it escalates pause 🔐 for your judgement via `permit`, but it has been observed writing workspace files WITHOUT surfacing a request — partition its work and review its diff like any delegate's.",
+        "Hand Grok an implementation task as your delegate coder on its own named session. Grok has been observed writing workspace files without surfacing a request — partition its work and review its diff.",
       inputSchema: delegateInput,
     },
     (args, extra) => runDelegate("grok", args, extra),
@@ -651,10 +712,10 @@ memberTools.grok.push(
 
 const memberField = {
   member: z
-    .enum(["claude", "codex", "grok", "council"])
+    .enum([...MEMBER_IDS, "council"] as unknown as [MemberId | "council", ...(MemberId | "council")[]])
     .optional()
     .describe(
-      'Which advisor to ask: a specific member, or "council" to fan out to all active advisors (each gives an independent view). Defaults to Codex (or the first available advisor if Codex is the host).',
+      'Which advisor to ask: a specific roster member, or "council" to fan out to all active advisors. Defaults to Codex (or the first available advisor if Codex is the host).',
     ),
 };
 
@@ -803,7 +864,7 @@ server.registerTool(
   "consult",
   {
     description:
-      "Consult the Magi council — every active advisor (the council members other than you) gives an independent view in one round, and you synthesize. Deliberation is host-mediated: it returns after one round; to make the council deliberate, weigh in and **call `consult` again** with `my_take` set to your evolving position (the advisors keep their context and respond to you), iterating until you judge agreement is reached. For one specific advisor use `ask_codex`/`ask_grok`/`ask_claude`; for a structured single-advisor pass use `review_plan`/`review_diff`/`brainstorm`/`explore` (those take `member: \"council\"` to fan out to all).",
+      `Consult the Magi council — every active advisor (the council members other than you) gives an independent view in one round, and you synthesize. Deliberation is host-mediated: it returns after one round; to make the council deliberate, weigh in and **call \`consult\` again** with \`my_take\` set to your evolving position (the advisors keep their context and respond to you), iterating until you judge agreement is reached. For one specific advisor use ${askToolNames}; for a structured single-advisor pass use \`review_plan\`/\`review_diff\`/\`brainstorm\`/\`explore\` (those take \`member: "council"\` to fan out to all).`,
     inputSchema: {
       question: z.string().describe("The question or decision to put to the council."),
       context: z.string().optional().describe("Optional background or constraints."),
@@ -820,10 +881,10 @@ server.registerTool(
           "Run each advisor on a throwaway session — independent of any prior conversation and discarded afterward — so the council's votes don't carry or leave cross-call context. Slower (each advisor spawns fresh). Default false (reuse the persistent collaborator sessions). Note: `fresh` makes each call independent, so it doesn't accumulate the host-mediated deliberation across calls.",
         ),
       members: z
-        .array(z.enum(["claude", "codex", "grok"]))
+        .array(memberSchema)
         .optional()
         .describe(
-          "Which members sit on the council for this call. Omit for the default — every active advisor (the members other than you). Name a subset to convene just those. (The host is never a member; it participates by driving the rounds.)",
+          "Which roster members sit on the council for this call. Omit for every active advisor; the host is never a member.",
         ),
       ...modelsField,
       ...effortsField,
@@ -905,7 +966,7 @@ async function councilTurn(
 function unknownHostWarning(): string | undefined {
   const r = resolveHost();
   return r.source === "unknown"
-    ? `⚠️ Host not recognized (clientInfo: ${r.rawClient ?? "none"}); all three members are participating, so one of these voices may be you. Set \`MAGI_COUNCIL_EXCLUDE=claude|codex|grok\` to exclude yourself.`
+    ? `⚠️ Host not recognized (clientInfo: ${r.rawClient ?? "none"}); all roster members are participating, so one of these voices may be you. Set \`MAGI_COUNCIL_EXCLUDE=claude|codex|copilot|grok\` to exclude yourself.`
     : undefined;
 }
 
@@ -954,7 +1015,7 @@ async function councilFanOut(
 
   const footer =
     synth ??
-    `_You (${host}) are the lead — weigh these voices and decide. Follow up with the active members' reply tools (\`codex_reply\` / \`grok_reply\` / \`claude_reply\`), or ask one directly (\`ask_codex\` / \`ask_grok\` / \`ask_claude\`)._`;
+    `_You (${host}) are the lead — weigh these voices and decide. Follow up with ${replyToolNames}, or ask one directly with ${askToolNames}._`;
   return { content: [{ type: "text", text: [...sections, footer].join("\n\n---\n\n") }] };
 }
 
@@ -971,6 +1032,9 @@ async function runMagi(args: MagiArgs, extra: Extra): Promise<ToolResult> {
   const fresh = args.fresh ?? false;
   const timeoutMs = time !== undefined ? time * 1000 : undefined;
   const host = hostName();
+
+  const disabled = args.members?.find((id) => !isEnabled(id));
+  if (disabled) return inactiveResult(disabled);
 
   // Who's on the council this call: the default active advisors, or an explicit
   // subset of them. The host is never a member — it participates by *driving* the
@@ -1002,7 +1066,7 @@ async function runMagi(args: MagiArgs, extra: Extra): Promise<ToolResult> {
       timeoutMs,
       getSession,
       active,
-      `_You (${host}) are the lead **and a participant** in this deliberation. Read these views and form your own position. **Unless you and the council have reached agreement, call \`consult\` again** with \`my_take\` set to your current position (and any new framing in \`context\`) to run the next round — the advisors keep their context and will respond to you. Iterate until you judge agreement is reached, then act on it. (Or ask one directly with \`ask_codex\`/\`ask_grok\`/\`ask_claude\`.)_`,
+      `_You (${host}) are the lead **and a participant** in this deliberation. Read these views and form your own position. **Unless you and the council have reached agreement, call \`consult\` again** with \`my_take\` set to your current position (and any new framing in \`context\`) to run the next round — the advisors keep their context and will respond to you. Iterate until you judge agreement is reached, then act on it. (Or ask one directly with ${askToolNames}.)_`,
       args.models,
       args.efforts,
     );
@@ -1047,19 +1111,17 @@ server.registerTool(
   "available_councilors",
   {
     description:
-      "Start the requested active council members if needed and report the ACP model, permission-mode, and reasoning-effort selector values they expose. Does not send a prompt turn; use the listed values with `consult.models`/`consult.efforts`, single-member `model`/`effort`, or a delegate's `mode`/`model`/`effort`.",
+      "List all members, including members outside the council roster. Start requested active advisors if needed and report the ACP model, permission-mode, and reasoning-effort selectors they expose. Does not send a prompt turn.",
     inputSchema: {
       members: z
-        .array(z.enum(["claude", "codex", "grok"]))
+        .array(memberSchema)
         .optional()
-        .describe("Optional active members to inspect. Omit for every active council member."),
+        .describe("Optional members to inspect. Omit for every active advisor plus members outside the roster."),
     },
   },
   async ({ members }, extra) => {
+    const disabled = MEMBER_IDS.filter((id) => !isEnabled(id) && (!members || members.includes(id)));
     const ids = selectCouncil(members, activeIds());
-    if (ids.length === 0) {
-      return { content: [{ type: "text" as const, text: "No active council members in your selection." }] };
-    }
     const sections = await Promise.all(
       ids.map(async (id) => {
         try {
@@ -1070,6 +1132,14 @@ server.registerTool(
         }
       }),
     );
+    sections.push(
+      ...disabled.map(
+        (id) => `${specs[id].name}:\n  outside council roster: add ${id} to MAGI_COUNCIL_MEMBERS and restart to enable`,
+      ),
+    );
+    if (sections.length === 0) {
+      return { content: [{ type: "text" as const, text: "No active advisors in your selection." }] };
+    }
     return {
       content: [
         {
@@ -1089,7 +1159,7 @@ server.registerTool(
     inputSchema: {
       decision: z.enum(["allow", "deny"]).describe("Whether to let the member perform the requested action."),
       member: z
-        .enum(["claude", "codex", "grok"])
+        .enum(MEMBER_IDS as [MemberId, ...MemberId[]])
         .optional()
         .describe("Which member to resolve. Optional when only one session is paused; required if more than one is."),
       delegate: z
@@ -1176,7 +1246,7 @@ server.registerTool(
   "status",
   {
     description:
-      "Report magi-council's health: the resolved host (and how it was resolved), the active council, workspace, guardian flags, and each active member's session/subprocess liveness and pending permission. Read-only; does not start a session.",
+      "Report magi-council's health: the resolved host, council roster, active advisors, workspace, guardian flags, and session health. Read-only; does not start a session.",
     inputSchema: {},
   },
   () => {
@@ -1184,13 +1254,19 @@ server.registerTool(
     const client = r.rawClient ? `clientInfo="${r.rawClient}"` : "clientInfo=none";
     const hostLine = r.excluded
       ? `host: ${specs[r.excluded].name} (excluded; source=${r.source}, ${client})`
-      : `host: unknown — all three members active (source=unknown, ${client}); set MAGI_COUNCIL_EXCLUDE to exclude the host`;
+      : `host: unknown — all roster members active (source=unknown, ${client}); set MAGI_COUNCIL_EXCLUDE to exclude the host`;
     const lines = [
       `workspace: ${config.workspaceRoot}`,
       hostLine,
+      `roster: ${memberIds.map((i) => specs[i].name).join(", ")}`,
       `council: ${activeIds().map((i) => specs[i].name).join(", ")}`,
       "",
       ...activeIds().map((id) => renderStatus(sessions[id].status())),
+      ...MEMBER_IDS.filter((id) => !isEnabled(id)).flatMap((id) => [
+        "",
+        `${specs[id].name}:`,
+        `  outside council roster: add ${id} to MAGI_COUNCIL_MEMBERS and restart to enable`,
+      ]),
       ...(delegates.size > 0
         ? ["", `delegates (${delegates.size}/${MAX_DELEGATES}):`, ...[...delegates.values()].map((d) => renderStatus(d.session.status()))]
         : []),
@@ -1213,14 +1289,18 @@ function renderStatus(s: SessionStatus): string {
   ].join("\n");
 }
 
-// Once the client identifies itself, resolve the host and remove its tools, so a
-// compliant client never sees tools for the agent that's driving the council.
+// Once the client identifies itself, remove tools for the host and members outside
+// the council roster. Call-time guards still protect clients with a stale tool list.
 server.server.oninitialized = (): void => {
   const r = resolveHost();
-  if (r.excluded) for (const t of memberTools[r.excluded]) t.remove();
+  for (const id of MEMBER_IDS) {
+    if (!isEnabled(id) || r.excluded === id) for (const t of memberTools[id]) t.remove();
+  }
   const hostLabel = r.excluded ? specs[r.excluded].name : "unknown (all active)";
   process.stderr.write(
-    `[magi-council] host=${hostLabel} (source=${r.source}${r.rawClient ? `, client=${r.rawClient}` : ""}); council=${activeIds()
+    `[magi-council] host=${hostLabel} (source=${r.source}${r.rawClient ? `, client=${r.rawClient}` : ""}); roster=${memberIds
+      .map((i) => specs[i].name)
+      .join("+")}; council=${activeIds()
       .map((i) => specs[i].name)
       .join("+")}\n`,
   );

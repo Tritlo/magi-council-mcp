@@ -3,7 +3,7 @@ import type { Config } from "./config.ts";
 
 /** One turn's full detail, kept out of the tool result and sent here instead. */
 export interface TurnRecord {
-  /** Which member answered (Codex / Grok). */
+  /** Which member answered. */
   member: string;
   /** Which tool drove the turn (consult, reply, …). */
   tool: string;

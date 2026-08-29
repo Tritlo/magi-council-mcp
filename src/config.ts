@@ -1,10 +1,13 @@
 import { resolve } from "node:path";
 
-/** The three council members. The host (whichever is driving the MCP) is excluded. */
-export type MemberId = "claude" | "codex" | "grok";
+/** Every supported council member. The configured host is excluded at runtime. */
+export type MemberId = "claude" | "codex" | "copilot" | "grok";
 
 /** All member ids, in a stable order used for iteration and voice ordering. */
-export const MEMBER_IDS: MemberId[] = ["codex", "grok", "claude"];
+export const MEMBER_IDS: MemberId[] = ["codex", "copilot", "grok", "claude"];
+
+/** Default roster. Copilot stays available as an explicit opt-in member. */
+const DEFAULT_MEMBER_IDS: MemberId[] = ["codex", "grok", "claude"];
 
 /**
  * One council member reachable over its own `codex-acp`-style ACP subprocess.
@@ -30,7 +33,7 @@ export interface MemberSpec {
 /**
  * Runtime configuration, all sourced from the environment so the server stays
  * a pure stdio process that an agent can launch with `claude mcp add` (or the
- * equivalent for Codex/Grok).
+ * equivalent for Codex/Copilot/Grok).
  *
  * The three `allow*` flags are the guardian-mode expansion switches, shared by
  * all members: every one defaults to `false`, so out of the box a member may
@@ -41,8 +44,12 @@ export interface Config {
   claude: MemberSpec;
   /** Codex (GPT-5.x) — a council member. */
   codex: MemberSpec;
+  /** GitHub Copilot — a council member. */
+  copilot: MemberSpec;
   /** Grok (xAI) — a council member, strong at live web/X search. */
   grok: MemberSpec;
+  /** Enabled council roster, before the host is excluded. */
+  memberIds: MemberId[];
   /**
    * Member to exclude as the host, forced via `MAGI_COUNCIL_EXCLUDE` (startup
    * only). Wins over clientInfo detection; undefined falls back to detection.
@@ -104,6 +111,27 @@ function excludeOverride(): MemberId | undefined {
   return v && (MEMBER_IDS as string[]).includes(v) ? (v as MemberId) : undefined;
 }
 
+/** Parse the enabled roster, then restore canonical member order. */
+function configuredMemberIds(): MemberId[] {
+  const raw = process.env.MAGI_COUNCIL_MEMBERS;
+  if (raw === undefined) return [...DEFAULT_MEMBER_IDS];
+
+  const requested = raw
+    .split(",")
+    .map((id) => id.trim().toLowerCase())
+    .filter(Boolean);
+  const unknown = requested.filter((id) => !(MEMBER_IDS as string[]).includes(id));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown MAGI_COUNCIL_MEMBERS value: ${unknown.join(", ")}. Use: ${MEMBER_IDS.join(", ")}.`);
+  }
+  if (requested.length === 0) {
+    throw new Error(`MAGI_COUNCIL_MEMBERS must name at least one member: ${MEMBER_IDS.join(", ")}.`);
+  }
+
+  const selected = new Set(requested);
+  return MEMBER_IDS.filter((id) => selected.has(id));
+}
+
 /**
  * Build the {@link Config} from environment variables.
  *
@@ -131,14 +159,23 @@ export function loadConfig(): Config {
       ["bunx", "@agentclientprotocol/codex-acp@1.1.0"],
       "run `/codex:setup` or `codex login`",
     ),
+    copilot: memberSpec(
+      "copilot",
+      "Copilot",
+      "GitHub Copilot",
+      "MAGI_COUNCIL_COPILOT_ACP_COMMAND",
+      ["bunx", "@github/copilot@1.0.73", "--acp"],
+      "run `bunx @github/copilot@1.0.73 login` or set COPILOT_GITHUB_TOKEN",
+    ),
     grok: memberSpec(
       "grok",
       "Grok",
       "Grok",
       "MAGI_COUNCIL_GROK_ACP_COMMAND",
       ["grok", "agent", "stdio"],
-      "run `grok login` (Grok needs an xAI login with available usage)",
+      "run `grok login` and check usage",
     ),
+    memberIds: configuredMemberIds(),
     excludeOverride: excludeOverride(),
     workspaceRoot: resolve(process.env.MAGI_COUNCIL_WORKSPACE ?? process.cwd()),
     allowExternalReads: envBool("MAGI_COUNCIL_ALLOW_EXTERNAL_READS"),

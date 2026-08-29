@@ -128,8 +128,7 @@ export interface AskOptions {
    * even outside the workspace) and auto-denying writes and command execution — so
    * the turn never blocks. Used by the magi council, which must complete as a
    * single atomic call but should still be able to read. Reads/searches inside the
-   * workspace are auto-allowed in every mode, and Grok's built-in web/X search
-   * doesn't go through this path at all.
+   * workspace are auto-allowed in every mode.
    */
   onAskPermission?: "suspend" | "read-only";
 }
@@ -161,7 +160,7 @@ type TurnEvent =
 
 /** A point-in-time health snapshot of one member's session. */
 export interface SessionStatus {
-  /** Member display name (e.g. "Codex", "Grok"). */
+  /** Member display name (e.g. "Codex", "Claude"). */
   name: string;
   workspaceRoot: string;
   acpCommand: string;
@@ -235,13 +234,13 @@ export interface SessionOptions {
    * ACP permission-mode value to select right after the session starts. Advisor
    * sessions pin restricted modes (ADR 0018) so agents can't self-approve writes.
    * Best-effort: skipped with a {@link SessionStatus.modePinWarning} when the
-   * agent doesn't offer it (Grok reports no modes); never fails startup.
+   * agent doesn't offer it; never fails startup.
    */
   pinnedMode?: string;
 }
 
 /**
- * A long-lived ACP client over a spawned ACP agent process (Codex or Grok).
+ * A long-lived ACP client over a spawned ACP agent process.
  *
  * One session is created lazily on first use and reused for every tool call, so
  * the member accumulates context across the conversation (the "persistent
@@ -308,7 +307,7 @@ export class AcpSession {
     this.lastNonce = this.readResetNonce(); // baseline — only a later change resets
   }
 
-  /** Member display name (e.g. "Codex", "Grok"). */
+  /** Member display name (e.g. "Codex", "Claude"). */
   get name(): string {
     return this.member.name;
   }
@@ -650,7 +649,7 @@ export class AcpSession {
         try {
           await this.selectConfig("mode", this.pinnedMode);
         } catch (pinErr) {
-          // Advisory: the agent may not offer the mode (Grok reports none).
+          // Advisory: the agent may not offer the mode.
           // Surface via status() rather than failing startup.
           this.modePinWarning = `mode pin "${this.pinnedMode}" not applied: ${(pinErr as Error).message}`;
         }

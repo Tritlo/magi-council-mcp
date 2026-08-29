@@ -1,25 +1,28 @@
 # magi-council-mcp
 
 A small MCP server that lets a coding agent **consult other frontier models
-mid-task** — **Codex (GPT-5.x)**, **Grok (xAI)**, and **Claude (Anthropic)** —
-for a second opinion, plan review, diff review, brainstorming, exploration, media
-generation, and a three-way **Magi council**. A lightweight take on model
+mid-task** — **Codex (GPT-5.x)**, **GitHub Copilot**, **Grok (xAI)**, and
+**Claude (Anthropic)** — for a second opinion, plan review, diff review,
+brainstorming, exploration, media generation, and a **Magi council**. A lightweight take on model
 *fusion*: the host proposes, the others review, the host reconciles. (See
 OpenRouter's
 [Fusion beats Frontier](https://openrouter.ai/blog/announcements/fusion-beats-frontier/) —
 the synthesis step itself is where the gains come from.)
 
-The three "Magi" are **Claude, Codex, and Grok**. The server is **symmetric**:
-whichever agent launches it is the *host* (the lead, who synthesizes) and — when
+The default council roster is **Claude, Codex, and Grok**. **Copilot is available
+but opt-in**: add `copilot` to `MAGI_COUNCIL_MEMBERS` to enable it. The server is
+**symmetric**: whichever agent launches it is the *host*
+(the lead, who synthesizes) and — when
 recognized — is **auto-excluded from its own council**, so each host gets the
-*other two* as advisors (Claude convenes Codex+Grok, Codex convenes Claude+Grok,
-…). An unrecognized host gets all three (and may include itself) until you set
+other roster members as active advisors. An unrecognized host gets the full roster (and
+may include itself) until you set
 `MAGI_COUNCIL_EXCLUDE` (see [Symmetric council](#symmetric-council--host-detection)).
 
 Internally it's an [ACP](https://agentclientprotocol.com) *client* that spawns each
 non-host member's ACP server —
 [`codex-acp`](https://www.npmjs.com/package/@agentclientprotocol/codex-acp),
-`grok agent stdio`, and
+[`@github/copilot`](https://www.npmjs.com/package/@github/copilot) in native
+`--acp` mode, `grok agent stdio`, and
 [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) —
 keeping one persistent session per member per workspace.
 
@@ -31,13 +34,14 @@ keeping one persistent session per member per workspace.
 |------|-----------|
 | `consult` | convene the council on a question — each advisor gives an independent view, you synthesize. **Deliberation is host-mediated**: it returns one round; weigh in (`my_take`) and **call again** to run the next round, iterating until you judge agreement. `members` picks who sits on the council (a subset); `fresh` runs each advisor on a throwaway session (no cross-call context) |
 
-**Ask one advisor directly** (a member's pair appears only when it isn't the host):
+**Ask one advisor directly** (a member's pair appears only when it is in the roster and is not the host):
 
 | Tool | Use it to… |
 |------|-----------|
 | `ask_codex` / `codex_reply` | a second opinion from Codex (GPT-5), and follow-ups |
-| `ask_grok` / `grok_reply` | a second opinion from Grok — live web/X search, current events |
+| `ask_copilot` / `copilot_reply` | a second opinion from GitHub Copilot (when enabled in the roster) |
 | `ask_claude` / `claude_reply` | a second opinion from Claude (generalist coder) |
+| `ask_grok` / `grok_reply` | a second opinion from Grok — live web/X search, current events |
 | `grok_generate` | generate an image or short video with Grok, saved into the workspace |
 
 **Structured single-advisor passes** — each takes an optional `member` (default Codex, or `"council"` to fan out to all):
@@ -49,11 +53,12 @@ keeping one persistent session per member per workspace.
 | `brainstorm` | get 2–4 alternative approaches with trade-offs + a recommendation |
 | `explore` | map an unfamiliar codebase (structure, components, flow, conventions) |
 
-**Delegates** — members as managed coders, working under you (ADR 0018; a member's tool appears only when it isn't the host):
+**Delegates** — members as managed coders, working under you (ADR 0018; a member's tool appears only when it is in the roster and is not the host):
 
 | Tool | Use it to… |
 |------|-----------|
 | `delegate_codex` | hand Codex an implementation task on its own named session (default mode `agent`: sandboxed writes/commands) |
+| `delegate_copilot` | hand Copilot an implementation task on its own named session (when enabled in the roster) |
 | `delegate_claude` | hand Claude an implementation task (default mode `auto`: classifier-judged permissions) |
 | `delegate_grok` | hand Grok an implementation task (no ACP modes; may write without asking — review its diff) |
 
@@ -69,32 +74,33 @@ on its live context. Delegates report back: outcome, files changed, verification
 | `permit` | allow/deny a permission a member or delegate raised mid-turn, then resume it (pass `member`, plus `delegate` for a delegate session) |
 | `reset` | drop **all** members' accumulated context, dismiss all delegates, and start fresh sessions |
 | `status` | report the resolved host, the active council, live delegates, and each session's health |
-| `available_councilors` | start active members if needed and report ACP model, reasoning-effort, **and permission-mode** selector values |
+| `available_councilors` | list all members; start active advisors if needed and report ACP model, reasoning-effort, **and permission-mode** selector values |
 
 All tools are **advisory** — the members answer, you decide. A member's direct
-tools (`ask_*`/`*_reply`) appear **only when that member isn't the host**; the
-council and the structured tools are always present and target the active members.
+tools (`ask_*`/`*_reply`) appear **only when that member is in the roster and is
+not the host**. The council and the structured tools are always present and target
+the active advisors.
 
 ### Symmetric council & host detection
 
-The council is **symmetric** — any of the three agents can host it. On MCP
-`initialize` the server reads the connecting client's identity and **excludes that
-member** (the host), leaving the other two as the council. Resolution order:
+The council is **symmetric** — Claude, Codex, Copilot, or Grok can host it. On MCP
+`initialize`, the server reads the connecting client's identity and **excludes that
+member** (the host) from the roster, leaving the active advisors. Resolution order:
 
-1. **`MAGI_COUNCIL_EXCLUDE`** (`claude`|`codex`|`grok`, startup only) — explicit, wins.
-2. **`clientInfo.name`** sent at `initialize` — matched against `claude`/`codex`/`grok`.
-3. **unknown** — if neither resolves, *all three* members participate (one may be
+1. **`MAGI_COUNCIL_EXCLUDE`** (`claude`|`codex`|`copilot`|`grok`, startup only) — explicit, wins.
+2. **`clientInfo.name`** sent at `initialize` — matched against those four ids.
+3. **unknown** — if neither resolves, the full roster participates (one may be
    the host). `status` and `consult` flag this, so an unrecognized host knows it
    can set the env var to exclude itself.
 
-When the host is known, its direct tools are removed and every handler also guards
-at call time, so it can't consult itself even if a client ignores the updated tool
-list. **Giving other agents the council** is just registering this server in their
+After initialization, the server removes tools for the host and for
+members outside the roster. Every handler also guards at call time, so a stale
+client cannot bypass the roster or make the host consult itself. **Giving other agents the council** is just registering this server in their
 MCP config — see [Other agents](#giving-other-agents-the-council).
 
 ### Debate, not one-shot
 
-The single-advisor tools (`ask_codex`/`ask_grok`/`ask_claude`, `review_plan`,
+The single-advisor tools (`ask_codex`/`ask_copilot`/`ask_grok`/`ask_claude`, `review_plan`,
 `review_diff`, `brainstorm`) frame each exchange as a short debate: the advisor
 pushes back, and ends every reply with a `VERDICT: CONSENSUS — …` or
 `VERDICT: OPEN — …` line. When it's `OPEN`, push back with that advisor's reply
@@ -104,8 +110,8 @@ keep it to ~3 turns.
 ### The Magi council (`consult`)
 
 `consult` convenes your advisors — the council members other than you — on one
-question. **Every active advisor weighs in** with an *independent* view (no cross-talk;
-Grok leans on its live web/X search where it helps), and you synthesize.
+question. **Every active advisor weighs in** with an *independent* view. Grok
+uses its live web/X search when it helps, and you synthesize.
 
 **Deliberation is host-mediated** (ADR 0016): `consult` runs **one round** and returns,
 telling you to form your own position and **call `consult` again** — with `my_take` set
@@ -131,7 +137,7 @@ trade-off; the durable other end is the proposed `MAGI.md`, ADR 0011.)
 ### Model and effort selection
 
 Call **`available_councilors`** to see the ACP model and reasoning-effort selector
-values reported by the active members. Use the value at the start of each choice
+values reported by the active advisors. Use the value at the start of each choice
 row, not the display label. For example, Claude may report model values like:
 
 ```text
@@ -177,25 +183,25 @@ at once (each on its own session), rendered back in member order, as a single to
 call with no permit round-trips. A council turn is **read-only**: members may read any files and
 search/fetch to ground their answers, but writes and command execution are
 auto-denied (and surfaced as a `⚠️ blocked in council mode: …` line, so a
-grounded-looking answer can't hide a quietly-denied action). Grok's web/X search
-isn't a guardian action, so it works in-council too. Each member is handled
-independently, so if one is unavailable you still get the others.
+grounded-looking answer can't hide a quietly-denied action). Each member is
+handled independently, so if one is unavailable you still get the others.
+Grok's web/X search is not a guardian action, so it works in council mode.
 
 The structured tools (`review_plan`/`review_diff`/`brainstorm`/`explore`) also take
 **`member: "council"`** to fan out one round to every advisor (independent panel,
 no multi-round deliberation). Since council mode is read-only, a `member:"council"`
 `review_diff` can't run `git diff` (a command) — use single-advisor `review_diff`
-(which can, via a permit) for that. For **image/video generation** use
-`grok_generate` (it writes a file, which read-only council mode would block); the
-council is aware of the capability and will suggest it rather than do it.
+(which can, via a permit) for that. For **image/video generation**, use
+`grok_generate`. It writes a file, which read-only council mode would block.
 
 ### Permission modes (advisors restricted, delegates native)
 
 Members expose their own permission modes over ACP (codex: `read-only` / `agent` /
-`agent-full-access`; claude: `auto` / `default` / `acceptEdits` / …; grok: none),
+`agent-full-access`; claude: `auto` / `default` / `acceptEdits` / …; Copilot and
+Grok may report no per-session mode selector),
 discovered at session start like models and efforts — `available_councilors` lists them.
-**Advisor sessions are pinned to restricted modes** (codex → `read-only`, claude →
-`default`) so an agent's permissive default can't self-approve writes behind the
+**Advisor sessions are pinned to restricted modes where verified** (codex →
+`read-only`, claude → `default`) so an agent's permissive default can't self-approve writes behind the
 guardian's back; if a pin can't apply, `status` shows a ⚠️ warning. **Delegate
 sessions use the member's native mode** — the agent's default, or a per-call
 `mode` (sticky for that delegate's session). Whatever a mode still escalates
@@ -203,8 +209,8 @@ sessions use the member's native mode** — the agent's default, or a per-call
 stays the guardian for risky actions. But the permit fallback only gates what an
 agent chooses to surface: codex's internal Guardian Review can self-approve
 workspace writes even in `read-only` mode, and Grok has been observed writing
-workspace files without asking (both verified live). Modes steer; they are not a
-hard boundary — review a delegate's diff.
+workspace files without asking. Modes steer; they are not a hard boundary —
+review a delegate's diff.
 
 ### Permissions: the host is the guardian
 
@@ -218,8 +224,8 @@ commands, writes, network, out-of-workspace reads — comes back to the host. Th
 `ALLOW_*` flags downgrade a whole category from "ask" to "auto-allow".
 
 All advisors share this guardian. Since each has its own session, **more than one
-can be paused at once** (e.g. a `consult` pauses Codex, then an `ask_grok` pauses
-Grok); `permit` takes an optional **`member`** (`claude`|`codex`|`grok`) — inferred
+can be paused at once** (e.g. an advisor and a delegate); `permit` takes an
+optional **`member`** (`claude`|`codex`|`copilot`|`grok`) — inferred
 when only one is pending, required when several are. (The Magi council never
 suspends — it runs read-only, resolving permissions inline — so it never leaves a
 pending permit.)
@@ -241,8 +247,8 @@ with how to recover. In the council, one member running out still returns the ot
 
 Turns stream live: the member's text, its reasoning (a `💭 …` thinking view), and a
 `↳ …` activity trail are sent as MCP progress notifications, so you can watch
-(and steer between turns). In the council, each voice's stream is prefixed
-(`Codex …` / `Grok …`). The reasoning stream doubles as a heartbeat — the MCP
+(and steer between turns). In the council, each voice's stream is prefixed with
+the member name. The reasoning stream doubles as a heartbeat — the MCP
 client resets its request timeout on progress, so forwarding the thinking
 keeps a long, silently-reasoning turn from being cancelled by the client. Cancel
 a turn and the member is told to stop (`session/cancel`); if it ignores the cancel, a
@@ -257,8 +263,7 @@ decision is **not** timed.) If your client caps tool calls more tightly, raise
 its timeout too — for Claude Code, `MCP_TOOL_TIMEOUT` (e.g. `600000`); `consult`
 runs every advisor concurrently in one round, so it benefits from a generous cap.
 The tool result stays focused on the member's answer plus a one-line footer
-(latency, tokens — Grok reports latency only); the full play-by-play goes to the
-debug log.
+(latency and tokens); the full play-by-play goes to the debug log.
 
 ### Sessions & reset
 
@@ -272,7 +277,7 @@ last one. `reset` clears **all** members and dismisses all delegates. Two ways t
   the new session id to a per-workspace nonce file; the server notices the change
   on its next turn, drops the members' sessions, and dismisses all delegates, so
   everything starts fresh alongside the host. (`compact`/`resume`/`startup` are intentionally left alone.) **This
-  hook is Claude Code-specific** — for a Codex/Grok host, use the manual `reset`
+  hook is Claude Code-specific** — for any other host, use the manual `reset`
   tool instead.
 - **Manual** — call the `reset` tool any time: switching to an unrelated task,
   when a member's context has grown stale over a long session, or to clear a wedged
@@ -290,16 +295,19 @@ advisor that no longer has the thread. Re-establish context (or `reset` and star
   fetched on demand via `bunx`, pinned to an exact version (it releases near-daily
   and drives Codex's experimental `codex app-server` protocol underneath — the pin
   keeps both sides in lockstep); bump the version in `src/config.ts` deliberately.
-- For the Grok tools (`ask_grok`, `grok_reply`, `grok_generate`) and Grok's seat
-  on the council: the [Grok CLI](https://x.ai) on your `PATH` and a working login
-  (`grok login`) with available usage.
+- When Copilot is in the roster, it uses the official [`@github/copilot`](https://www.npmjs.com/package/@github/copilot)
+  CLI in native ACP mode, fetched via `bunx` and pinned in `src/config.ts`.
+  Authenticate once with `bunx @github/copilot@1.0.73 login`, or set
+  `COPILOT_GITHUB_TOKEN`.
+- Grok uses the [Grok CLI](https://x.ai) on your `PATH`. Run `grok login` and
+  confirm that the account has available usage.
 - For Claude's seat on the council (only when the host **isn't** Claude):
   [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp),
   fetched on demand via `bunx`, plus a working Claude login / `ANTHROPIC_API_KEY`.
   **Experimental** — not yet smoke-tested as an advisor; disable by setting
   `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` to a no-op or excluding Claude.
 
-Each member is **optional and lazy** — only spawned when one of its tools (or a
+Each member is **lazy** — only spawned when one of its tools (or a
 council turn that brings it in) is actually called. With the usual Claude host, the
 Claude member never spawns.
 
@@ -354,7 +362,7 @@ resets the members for both; that only discards advisory context, never corrupts
 
 ### Giving other agents the council
 
-Because the host is auto-excluded, the same server works for **Codex** or **Grok**
+Because the host is auto-excluded, the same server works for **Codex, Copilot, or Grok**
 as host — register it in their MCP config the same way. The server tries to detect
 the host from the client's `initialize` identity, but detection isn't guaranteed,
 so **set `MAGI_COUNCIL_EXCLUDE` explicitly** for non-Claude hosts, e.g. in a Codex
@@ -365,8 +373,10 @@ host's MCP server env:
   "env": { "MAGI_COUNCIL_EXCLUDE": "codex", "MAGI_COUNCIL_WORKSPACE": "/ABS/PATH/your-project" } }
 ```
 
-That host then gets Claude + Grok as its council (`ask_claude`, `ask_grok`,
-`consult`). Check `status` to confirm the resolved host and active council.
+With the default roster, that Codex host gets Claude + Grok as its council
+(`ask_claude`, `ask_grok`, `consult`). Add Copilot to `MAGI_COUNCIL_MEMBERS` to
+include `ask_copilot`. Check
+`status` to confirm the resolved host and active council.
 
 For Codex CLI/IDE specifically, either add it with the CLI:
 
@@ -406,9 +416,11 @@ workspace env var.
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `MAGI_COUNCIL_WORKSPACE` | cwd | Absolute path the members are scoped to; the base for every guardian check. |
-| `MAGI_COUNCIL_EXCLUDE` | (auto) | Force the host member to exclude (`claude`\|`codex`\|`grok`). Wins over clientInfo detection; recommended for non-Claude hosts. |
+| `MAGI_COUNCIL_MEMBERS` | `codex,grok,claude` | Comma-separated council roster. Member ids: `claude`, `codex`, `copilot`, and `grok`. Input order does not change canonical voice order. |
+| `MAGI_COUNCIL_EXCLUDE` | (auto) | Force the host member to exclude (`claude`\|`codex`\|`copilot`\|`grok`). Wins over clientInfo detection; recommended for non-Claude hosts. |
 | `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` | `bunx @agentclientprotocol/claude-agent-acp@0.55.0` | How to launch Claude's ACP server (used only when Claude isn't the host). |
 | `MAGI_COUNCIL_CODEX_ACP_COMMAND` | `bunx @agentclientprotocol/codex-acp@1.1.0` | How to launch Codex's ACP server. |
+| `MAGI_COUNCIL_COPILOT_ACP_COMMAND` | `bunx @github/copilot@1.0.73 --acp` | How to launch GitHub Copilot CLI's native ACP server. |
 | `MAGI_COUNCIL_GROK_ACP_COMMAND` | `grok agent stdio` | How to launch Grok's ACP server. |
 | `MAGI_COUNCIL_ALLOW_EXTERNAL_READS` | off | Let a member read outside the workspace + use network fetch. |
 | `MAGI_COUNCIL_ALLOW_WRITES` | off | Let a member edit/delete/move files inside the workspace. |
@@ -432,14 +444,14 @@ in [`src/permissions.ts`](src/permissions.ts).
 ## Layout
 
 ```
-src/config.ts       env → Config + 3 per-member MemberSpecs + host-exclude override
+src/config.ts       env → Config + per-member MemberSpecs + host-exclude override
 src/permissions.ts  guardianDecision — the pure permission policy
 src/council.ts      pure council-selection logic (selectCouncil)
-src/prompts.ts      host-parameterized prompts per tool (Codex/Grok/Claude, magi, generate)
+src/prompts.ts      host-parameterized prompts per tool (Codex/Copilot/Claude/Grok, magi)
 src/session.ts      AcpSession — ACP client: spawn a member, selector config, persistent session, streaming ask()
 src/reset.ts        per-workspace reset-nonce path (shared by server + hook)
 src/log.ts          per-turn debug log (stderr summary + optional JSONL file)
-src/index.ts        MCP server: 3 member sessions, host detection + tool gating, the Magi council, delegates
+src/index.ts        MCP server: member sessions, host detection + tool gating, the Magi council, delegates
 hooks/session-reset.ts  SessionStart hook: reset members on the host's /clear (Claude Code)
 test/fake-acp.ts    a scripted ACP agent subprocess for tests (behavior by --scenario)
 test/*.test.ts      bun test: AcpSession lifecycle (E2E vs the fake) + pure council logic

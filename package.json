@@ -1,7 +1,7 @@
 {
   "name": "magi-council-mcp",
-  "version": "0.2.0",
-  "description": "MCP server that lets Claude convene a council of frontier models — Codex (codex-acp) and Grok (grok agent stdio) — for review, co-planning, and a three-way Magi deliberation.",
+  "version": "0.3.0",
+  "description": "MCP server that lets coding agents consult Codex, Grok, Claude, and optional GitHub Copilot for review, co-planning, and host-mediated deliberation.",
   "type": "module",
   "bin": {
     "magi-council-mcp": "src/index.ts"

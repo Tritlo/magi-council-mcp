@@ -1,14 +1,13 @@
 /**
  * Prompt builders for each council tool.
  *
- * Members (GPT-5/Codex, Grok, Claude) respond best to compact, block-structured
+ * Members (GPT-5/Codex, GitHub Copilot, Grok, and Claude) respond best to compact, block-structured
  * prompts with stable XML tags: one task, an explicit output contract, and only
  * the grounding/verification blocks the task needs. These templates follow the
  * Codex prompting recipes and the GPT-5.2 prompting guide (default to tight
  * output, ground claims, label hypotheses, no speculative scope).
  *
- * Every builder takes `host` — the agent driving the council (Claude, Codex, or
- * Grok, whichever launched the MCP). The advisor is told it's reviewing for that
+ * Every builder takes `host` — the agent driving the council. The advisor is told it's reviewing for that
  * host, so the framing stays correct whoever is in the lead.
  */
 
@@ -48,7 +47,7 @@ function withContext(context: string | undefined): string {
 
 /** Shared block: a council turn is read-only deliberation, not a side-effect run. */
 const DELIBERATION_ONLY = `<deliberation_only>
-This is a READ-ONLY council deliberation. You MAY read any files and search/fetch to ground your view — read whatever you need directly (don't shell out for it). You may NOT modify files or run shell commands: writes and command execution are auto-declined here. Built-in web/X search is fine and encouraged where it helps. If something genuinely can't be inspected, say so briefly rather than trying to run a command.
+This is a READ-ONLY council deliberation. You MAY read any files and search/fetch to ground your view — read whatever you need directly (don't shell out for it). You may NOT modify files or run shell commands: writes and command execution are auto-declined here. Built-in web search is fine and encouraged where it helps. If something genuinely can't be inspected, say so briefly rather than trying to run a command.
 </deliberation_only>`;
 
 /** A focused question / second opinion on a specific decision, from Codex (the
@@ -172,7 +171,21 @@ export function delegateSteerPrompt(host: string, message: string, context?: str
     .join("\n\n");
 }
 
-/** Grok's extra capabilities, advertised so it leans on them when relevant. */
+/** A direct second opinion from Copilot (the `ask_copilot` endpoint). */
+export function askCopilotPrompt(host: string, question: string, context?: string): string {
+  return assemble(
+    "GitHub Copilot",
+    host,
+    `<task>\n${question.trim()}\n</task>`,
+    withContext(context),
+    `<compact_output_contract>\nAnswer directly first (≤3 sentences), then the key reasoning as a few bullets. If ${host}'s framing has a wrong assumption, say so up front. No preamble or recap.\n</compact_output_contract>`,
+    GROUNDING,
+    MISSING_CONTEXT,
+    debate(host),
+  );
+}
+
+/** Grok's extra capabilities, advertised so it uses them when relevant. */
 const GROK_STRENGTHS = `<grok_strengths>
 You have live web and X (Twitter) search, current-events knowledge, and image/video generation. Lean on these when the question benefits from real-time information, an X/web lookup, or generated media. Cite sources when you searched.
 </grok_strengths>`;
@@ -219,7 +232,7 @@ This is the Magi council: ${host} (the lead — convened this and will synthesiz
 }
 
 /**
- * One advisor's turn in the Magi council. All active members are equal advisors
+ * One advisor's turn in the Magi council. All active advisors have equal roles
  * and answer the same question independently; `grokStrengths` adds Grok's
  * live-search note when the advisor is Grok.
  */
@@ -246,11 +259,7 @@ export function magiAdvisorPrompt(opts: {
   );
 }
 
-/**
- * Ask Grok to generate an image or short video and save it into the workspace
- * (the `grok_generate` tool). Not a reviewer turn — it produces media, then
- * reports the path(s) so the host can surface the file.
- */
+/** Ask Grok to generate an image or short video and save it in the workspace. */
 export function grokGeneratePrompt(prompt: string, kind: "image" | "video", outputPath?: string): string {
   const what = kind === "video" ? "a short video" : "an image";
   return [
