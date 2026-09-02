@@ -304,7 +304,10 @@ advisor that no longer has the thread. Re-establish context (or `reset` and star
 - For Claude's seat on the council (only when the host **isn't** Claude):
   [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp),
   fetched on demand via `bunx`, plus a working Claude login / `ANTHROPIC_API_KEY`.
-  **Experimental** — not yet smoke-tested as an advisor; disable by setting
+  The pinned adapter bundles Claude Code 2.1.257 and exposes Fable 5.1.
+  The spawned Claude process disables Claude's native advisor tool because the
+  council supplies the second opinion.
+  **Experimental** — disable by setting
   `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` to a no-op or excluding Claude.
 
 Each member is **lazy** — only spawned when one of its tools (or a
@@ -418,7 +421,7 @@ workspace env var.
 | `MAGI_COUNCIL_WORKSPACE` | cwd | Absolute path the members are scoped to; the base for every guardian check. |
 | `MAGI_COUNCIL_MEMBERS` | `codex,grok,claude` | Comma-separated council roster. Member ids: `claude`, `codex`, `copilot`, and `grok`. Input order does not change canonical voice order. |
 | `MAGI_COUNCIL_EXCLUDE` | (auto) | Force the host member to exclude (`claude`\|`codex`\|`copilot`\|`grok`). Wins over clientInfo detection; recommended for non-Claude hosts. |
-| `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` | `bunx @agentclientprotocol/claude-agent-acp@0.55.0` | How to launch Claude's ACP server (used only when Claude isn't the host). |
+| `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` | `bunx @agentclientprotocol/claude-agent-acp@0.73.0` | How to launch Claude's ACP server (used only when Claude isn't the host). |
 | `MAGI_COUNCIL_CODEX_ACP_COMMAND` | `bunx @agentclientprotocol/codex-acp@1.1.0` | How to launch Codex's ACP server. |
 | `MAGI_COUNCIL_COPILOT_ACP_COMMAND` | `bunx @github/copilot@1.0.73 --acp` | How to launch GitHub Copilot CLI's native ACP server. |
 | `MAGI_COUNCIL_GROK_ACP_COMMAND` | `grok agent stdio` | How to launch Grok's ACP server. |

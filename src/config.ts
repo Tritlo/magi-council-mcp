@@ -148,7 +148,7 @@ export function loadConfig(): Config {
       "Claude",
       "Claude",
       "MAGI_COUNCIL_CLAUDE_ACP_COMMAND",
-      ["bunx", "@agentclientprotocol/claude-agent-acp@0.55.0"],
+      ["bunx", "@agentclientprotocol/claude-agent-acp@0.73.0"],
       "ensure Claude is authenticated (claude-agent-acp uses your Claude login or ANTHROPIC_API_KEY)",
     ),
     codex: memberSpec(

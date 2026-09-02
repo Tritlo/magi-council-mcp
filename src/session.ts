@@ -590,8 +590,12 @@ export class AcpSession {
     const [cmd, ...args] = this.member.acpCommand;
     if (!cmd) throw new Error(`${this.member.commandEnvName} is empty`);
 
+    // The council supplies the second opinion. Do not let Claude start its own advisor.
+    const env =
+      this.member.id === "claude" ? { ...process.env, CLAUDE_CODE_DISABLE_ADVISOR_TOOL: "1" } : process.env;
     const child = spawn(cmd, args, {
       cwd: this.config.workspaceRoot,
+      env,
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;
