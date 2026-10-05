@@ -1,0 +1,267 @@
+{
+  "case": "selector-resolution",
+  "protocol": "baseline",
+  "models": {
+    "codex": "gpt-6-astra",
+    "claude": "opus"
+  },
+  "effort": "medium",
+  "turns": 9,
+  "elapsedMs": 174652,
+  "summedTurnMs": 173419,
+  "reportedTokens": 305701,
+  "turnsWithUsage": 9,
+  "final": {
+    "passed": 15,
+    "total": 15,
+    "checks": [
+      {
+        "name": "grouped choices and trimmed case-insensitive request",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "models",
+          "value": "Opus-9"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "models",
+          "value": "Opus-9"
+        }
+      },
+      {
+        "name": "select type and explicit category take precedence over fallback",
+        "passed": true,
+        "actual": {
+          "status": "unchanged",
+          "selectorId": "explicit",
+          "value": "a"
+        },
+        "expected": {
+          "status": "unchanged",
+          "selectorId": "explicit",
+          "value": "a"
+        }
+      },
+      {
+        "name": "mode does not match model substring or another assigned category",
+        "passed": true,
+        "actual": {
+          "status": "missing-selector",
+          "selectorId": null,
+          "value": null
+        },
+        "expected": {
+          "status": "missing-selector",
+          "selectorId": null,
+          "value": null
+        }
+      },
+      {
+        "name": "fallback aliases use unordered whole tokens and first match",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "effort-level",
+          "value": "high"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "effort-level",
+          "value": "high"
+        }
+      },
+      {
+        "name": "permission policy is a mode fallback alias",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "policy",
+          "value": "allow"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "policy",
+          "value": "allow"
+        }
+      },
+      {
+        "name": "exact value outranks earlier exact name",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "chosen"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "chosen"
+        }
+      },
+      {
+        "name": "exact name outranks case-insensitive value",
+        "passed": true,
+        "actual": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "a"
+        },
+        "expected": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "a"
+        }
+      },
+      {
+        "name": "case-insensitive value outranks case-insensitive name",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "TARGET"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "TARGET"
+        }
+      },
+      {
+        "name": "ambiguous exact names do not fall through to a unique weaker tier",
+        "passed": true,
+        "actual": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "duplicate choices with the same value are not ambiguous",
+        "passed": true,
+        "actual": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "x"
+        },
+        "expected": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "x"
+        }
+      },
+      {
+        "name": "case-insensitive matching keeps differently cased values distinct",
+        "passed": true,
+        "actual": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "blank request is a no-op after selector resolution",
+        "passed": true,
+        "actual": {
+          "status": "no-request",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "no-request",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "group name is not a selectable choice",
+        "passed": true,
+        "actual": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "current value is not an implicit choice",
+        "passed": true,
+        "actual": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "choice values and labels retain their own whitespace",
+        "passed": true,
+        "actual": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        }
+      }
+    ]
+  },
+  "changes": [
+    {
+      "stage": "01-draft",
+      "member": "codex",
+      "passed": 15,
+      "recoveries": 0,
+      "regressions": 0
+    },
+    {
+      "stage": "3-revision",
+      "member": "codex",
+      "passed": 15,
+      "recoveries": 0,
+      "regressions": 0
+    },
+    {
+      "stage": "5-revision",
+      "member": "codex",
+      "passed": 15,
+      "recoveries": 0,
+      "regressions": 0
+    },
+    {
+      "stage": "7-revision",
+      "member": "codex",
+      "passed": 15,
+      "recoveries": 0,
+      "regressions": 0
+    },
+    {
+      "stage": "9-revision",
+      "member": "codex",
+      "passed": 15,
+      "recoveries": 0,
+      "regressions": 0
+    }
+  ]
+}

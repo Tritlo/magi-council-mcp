@@ -1,0 +1,406 @@
+{
+  "date": "2026-10-05T13:30:50.710Z",
+  "workspaceRoot": "/tmp/magi-harness-smoke-krHDwB",
+  "results": [
+    {
+      "id": "codex",
+      "command": [
+        "bunx",
+        "@agentclientprotocol/codex-acp@2.1.1"
+      ],
+      "inventory": {
+        "name": "Codex",
+        "sessionStarted": true,
+        "model": {
+          "selector": {
+            "id": "model",
+            "name": "Model"
+          },
+          "current": "gpt-6-astra",
+          "choices": [
+            {
+              "value": "gpt-6.1-sol",
+              "name": "6.1 Sol",
+              "description": "Latest workhorse model for coding and everyday work.",
+              "current": false
+            },
+            {
+              "value": "gpt-6-astra",
+              "name": "6 Astra",
+              "description": "Frontier intelligence for the most demanding work.",
+              "current": true
+            },
+            {
+              "value": "gpt-6-sol",
+              "name": "6 Sol",
+              "description": "Previous generation workhorse model.",
+              "current": false
+            },
+            {
+              "value": "gpt-6-luna",
+              "name": "6 Luna",
+              "description": "Fast and affordable model for easier tasks.",
+              "current": false
+            },
+            {
+              "value": "gpt-5.6-sol",
+              "name": "5.6 Sol",
+              "description": "Older generation workhorse model.",
+              "current": false
+            },
+            {
+              "value": "gpt-5.6-terra",
+              "name": "5.6 Terra",
+              "description": "Older balanced model for straightforward work.",
+              "current": false
+            },
+            {
+              "value": "gpt-5.6-luna",
+              "name": "5.6 Luna",
+              "description": "Older fast and efficient model.",
+              "current": false
+            },
+            {
+              "value": "gpt-daybreak-blue-latest",
+              "name": "Daybreak Blue",
+              "description": "Latest frontier agentic coding model for broad defensive cybersecurity work.",
+              "current": false
+            },
+            {
+              "value": "gpt-5.5",
+              "name": "5.5",
+              "description": "Legacy coding model.",
+              "current": false
+            }
+          ]
+        },
+        "mode": {
+          "selector": {
+            "id": "mode",
+            "name": "Mode"
+          },
+          "current": "read-only",
+          "choices": [
+            {
+              "value": "read-only",
+              "name": "Read-only",
+              "description": "Requires approval to edit files and access the internet.",
+              "current": true
+            },
+            {
+              "value": "workspace-write",
+              "name": "Workspace access",
+              "description": "Edit workspace files; ask before writing outside the workspace or accessing the network.",
+              "current": false
+            },
+            {
+              "value": "agent",
+              "name": "Auto review",
+              "description": "Only ask for actions detected as potentially unsafe",
+              "current": false
+            },
+            {
+              "value": "agent-full-access",
+              "name": "Full access",
+              "description": "Unrestricted access to the internet and any file on your computer",
+              "current": false
+            }
+          ]
+        },
+        "thoughtLevel": {
+          "selector": {
+            "id": "reasoning_effort",
+            "name": "Reasoning effort"
+          },
+          "current": "xhigh",
+          "choices": [
+            {
+              "value": "low",
+              "name": "Low",
+              "description": "Fast responses with lighter reasoning",
+              "current": false
+            },
+            {
+              "value": "medium",
+              "name": "Medium",
+              "description": "Balances speed and reasoning depth for everyday tasks",
+              "current": false
+            },
+            {
+              "value": "high",
+              "name": "High",
+              "description": "Greater reasoning depth for complex problems",
+              "current": false
+            },
+            {
+              "value": "xhigh",
+              "name": "Xhigh",
+              "description": "Extra high reasoning depth for complex problems",
+              "current": true
+            },
+            {
+              "value": "max",
+              "name": "Max",
+              "description": "Maximum reasoning depth for the hardest problems",
+              "current": false
+            },
+            {
+              "value": "ultra",
+              "name": "Ultra",
+              "description": "Maximum reasoning with automatic task delegation",
+              "current": false
+            }
+          ]
+        }
+      },
+      "status": {
+        "name": "Codex",
+        "workspaceRoot": "/tmp/magi-harness-smoke-krHDwB",
+        "acpCommand": "bunx @agentclientprotocol/codex-acp@2.1.1",
+        "guardian": {
+          "externalReads": false,
+          "writes": false,
+          "commands": false
+        },
+        "sessionStarted": true,
+        "currentModel": "gpt-6-astra",
+        "currentMode": "read-only",
+        "currentThoughtLevel": "xhigh",
+        "childAlive": true,
+        "stderrTail": "Resolving dependencies\nResolved, downloaded and extracted [35]\nSaved lockfile"
+      }
+    },
+    {
+      "id": "copilot",
+      "command": [
+        "bunx",
+        "@github/copilot@1.0.91",
+        "--acp"
+      ],
+      "passed": false,
+      "error": "Error: Copilot (bunx @github/copilot@1.0.91 --acp) failed to start a session: 403 \"unauthorized: not authorized to use this Copilot feature\\n\"\n\nCopilot stderr:\nResolving dependencies\nResolved, downloaded and extracted [28]\nSaved lockfile\n\nIf this is an auth or usage problem, run `bunx @github/copilot@1.0.91 login` or set COPILOT_GITHUB_TOKEN.",
+      "status": {
+        "name": "Copilot",
+        "workspaceRoot": "/tmp/magi-harness-smoke-krHDwB",
+        "acpCommand": "bunx @github/copilot@1.0.91 --acp",
+        "guardian": {
+          "externalReads": false,
+          "writes": false,
+          "commands": false
+        },
+        "sessionStarted": false,
+        "childAlive": false,
+        "stderrTail": "Resolving dependencies\nResolved, downloaded and extracted [28]\nSaved lockfile"
+      }
+    },
+    {
+      "id": "grok",
+      "command": [
+        "grok",
+        "agent",
+        "stdio"
+      ],
+      "passed": false,
+      "error": "Error: Grok (grok agent stdio) failed to start a session: Authentication required\n\nIf this is an auth or usage problem, run `grok login` and check usage.",
+      "status": {
+        "name": "Grok",
+        "workspaceRoot": "/tmp/magi-harness-smoke-krHDwB",
+        "acpCommand": "grok agent stdio",
+        "guardian": {
+          "externalReads": false,
+          "writes": false,
+          "commands": false
+        },
+        "sessionStarted": false,
+        "childAlive": false,
+        "stderrTail": ""
+      }
+    },
+    {
+      "id": "claude",
+      "command": [
+        "bunx",
+        "@agentclientprotocol/claude-agent-acp@0.86.0"
+      ],
+      "inventory": {
+        "name": "Claude",
+        "sessionStarted": true,
+        "model": {
+          "selector": {
+            "id": "model",
+            "name": "Model"
+          },
+          "current": "opus",
+          "choices": [
+            {
+              "value": "default",
+              "name": "Default (recommended)",
+              "description": "Opus 5.5",
+              "current": false
+            },
+            {
+              "value": "opus",
+              "name": "Opus 5.5",
+              "description": "For complex work and everyday tasks",
+              "current": true
+            },
+            {
+              "value": "fable",
+              "name": "Fable 5.1",
+              "description": "For your toughest challenges",
+              "current": false
+            },
+            {
+              "value": "sonnet",
+              "name": "Sonnet 5.5",
+              "description": "Most efficient for simpler tasks",
+              "current": false
+            },
+            {
+              "value": "haiku",
+              "name": "Haiku 4.5",
+              "description": "Fastest for quick answers",
+              "current": false
+            },
+            {
+              "value": "claude-sonnet-5",
+              "name": "Sonnet 5",
+              "description": "Efficient for routine tasks",
+              "current": false
+            },
+            {
+              "value": "claude-opus-5",
+              "name": "Opus 5",
+              "description": "Best for everyday, complex tasks",
+              "current": false
+            },
+            {
+              "value": "claude-fable-5",
+              "name": "Fable 5",
+              "description": "Most capable for your hardest and longest-running tasks",
+              "current": false
+            },
+            {
+              "value": "claude-opus-4-8",
+              "name": "Opus 4.8",
+              "description": "Best for everyday, complex tasks",
+              "current": false
+            },
+            {
+              "value": "claude-opus-4-7",
+              "name": "Opus 4.7",
+              "description": "Best for everyday, complex tasks",
+              "current": false
+            },
+            {
+              "value": "claude-opus-4-6",
+              "name": "Opus 4.6",
+              "description": "Best for everyday, complex tasks",
+              "current": false
+            },
+            {
+              "value": "claude-sonnet-4-6",
+              "name": "Sonnet 4.6",
+              "description": "Efficient for routine tasks",
+              "current": false
+            }
+          ]
+        },
+        "mode": {
+          "selector": {
+            "id": "mode",
+            "name": "Mode"
+          },
+          "current": "default",
+          "choices": [
+            {
+              "value": "default",
+              "name": "Manual",
+              "description": "Always ask before making changes",
+              "current": true
+            },
+            {
+              "value": "acceptEdits",
+              "name": "Accept edits",
+              "description": "Automatically accept all file edits",
+              "current": false
+            },
+            {
+              "value": "plan",
+              "name": "Plan",
+              "description": "Create a plan before making changes",
+              "current": false
+            },
+            {
+              "value": "auto",
+              "name": "Auto",
+              "description": "Claude handles permission decisions",
+              "current": false
+            },
+            {
+              "value": "bypassPermissions",
+              "name": "Bypass permissions",
+              "description": "Accepts all permissions",
+              "current": false
+            }
+          ]
+        },
+        "thoughtLevel": {
+          "selector": {
+            "id": "effort",
+            "name": "Effort"
+          },
+          "current": "xhigh",
+          "choices": [
+            {
+              "value": "default",
+              "name": "Default",
+              "current": false
+            },
+            {
+              "value": "low",
+              "name": "Low",
+              "current": false
+            },
+            {
+              "value": "medium",
+              "name": "Medium",
+              "current": false
+            },
+            {
+              "value": "high",
+              "name": "High",
+              "current": false
+            },
+            {
+              "value": "xhigh",
+              "name": "Xhigh",
+              "current": true
+            },
+            {
+              "value": "max",
+              "name": "Max",
+              "current": false
+            }
+          ]
+        }
+      },
+      "status": {
+        "name": "Claude",
+        "workspaceRoot": "/tmp/magi-harness-smoke-krHDwB",
+        "acpCommand": "bunx @agentclientprotocol/claude-agent-acp@0.86.0",
+        "guardian": {
+          "externalReads": false,
+          "writes": false,
+          "commands": false
+        },
+        "sessionStarted": true,
+        "currentModel": "opus",
+        "currentMode": "default",
+        "currentThoughtLevel": "xhigh",
+        "childAlive": true,
+        "stderrTail": "7-7498-4c27-946b-eb41adea6a75 phase=prepare-query durationMs=7 totalMs=26\n[session/create] sessionId=620946d7-7498-4c27-946b-eb41adea6a75 phase=sdk-initialize durationMs=1061 totalMs=1088\n[session/create] sessionId=620946d7-7498-4c27-946b-eb41adea6a75 phase=models durationMs=1 totalMs=1089\n[session/create] sessionId=620946d7-7498-4c27-946b-eb41adea6a75 phase=modes durationMs=0 totalMs=1089\n[session/create] sessionId=620946d7-7498-4c27-946b-eb41adea6a75 phase=agents durationMs=0 totalMs=1089\n[session/create] sessionId=620946d7-7498-4c27-946b-eb41adea6a75 phase=register durationMs=1 totalMs=1090"
+      }
+    }
+  ]
+}

@@ -1,0 +1,236 @@
+{
+  "prompt": "This is a self-contained code experiment. Use only the supplied problem and artifacts. Do not use tools, access files, consult other agents, or search. The evaluator is unavailable. Keep critiques below 250 words. For implementation turns, return only the complete TypeScript source, without Markdown fences or prose.\n\nRepair resolveSelector for a council client that selects a model, permission mode, or reasoning effort. Return one self-contained TypeScript source file with the exported synchronous function and any local types or helpers. Do not use imports, dependencies, filesystem access, network access, or code evaluation. Do not return prose or Markdown fences.\n\nSignature:\nresolveSelector(options: ConfigOption[], category: \"model\" | \"mode\" | \"thought_level\", request: string): Resolution\n\nInput types:\ntype Choice = { value: string; name: string };\ntype Group = { group: string; name: string; options: Choice[] };\ntype ConfigOption = { id: string; name: string; type: string; category?: string | null; currentValue: string; options: (Choice | Group)[] };\ntype Resolution = { status: \"missing-selector\" | \"no-request\" | \"unknown-choice\" | \"ambiguous\" | \"unchanged\" | \"change\"; selectorId: string | null; value: string | null };\n\nAll inputs conform to these types. An option with type other than exactly \"select\" is ineligible. First choose the first eligible option whose category exactly equals the requested category. Only when none exists, consider eligible options with category absent, null, or empty. For this fallback, split the combined id and name into lowercase ASCII alphanumeric tokens. The model category requires the whole token \"model\". The mode category requires the whole token \"mode\" or both whole tokens \"permission\" and \"policy\". The thought_level category requires both \"thought\" and \"level\", or both \"reasoning\" and \"effort\". Tokens may occur in either order. Choose the first fallback match. Do not match substrings and do not reuse an option assigned to a different nonempty category.\n\nIf there is no selector, return { status: \"missing-selector\", selectorId: null, value: null }, even for a blank request. Otherwise selectorId is the selected option's id. Trim whitespace from the request only. A blank request returns status \"no-request\" and value null. Flatten top-level choices and one-level groups in encounter order. Group labels and ids are not choices. Resolve the request using these tiers in order: exact value, exact name, case-insensitive value, case-insensitive name. Use JavaScript toLowerCase for case-insensitive comparisons. Do not trim choice values or names. Stop at the first tier with any matches. Deduplicate matches by their exact value. If that tier contains more than one distinct value, return status \"ambiguous\" and value null. Do not fall through to a weaker tier. If every tier is empty, return status \"unknown-choice\" and value null. For one distinct matched value, return it with status \"unchanged\" if it exactly equals currentValue, otherwise \"change\". currentValue may be absent from the choices; it is never an implicit choice.\n\nBuggy starting implementation:\nexport function resolveSelector(options: any[], category: string, request: string) {\n  const selector = options.find(option =>\n    option.category === category || (option.id + \" \" + option.name).toLowerCase().includes(category)\n  );\n  if (!selector) return { status: \"missing-selector\", selectorId: null, value: null };\n  const choice = selector.options.find((item: any) =>\n    (item.value ?? \"\").toLowerCase() === request.toLowerCase() ||\n    (item.name ?? \"\").toLowerCase() === request.toLowerCase()\n  );\n  return {\n    status: choice ? \"change\" : \"unknown-choice\",\n    selectorId: selector.id,\n    value: choice?.value ?? null,\n  };\n}",
+  "stage": "02-opus-draft",
+  "member": "claude",
+  "result": {
+    "text": "export type Choice = { value: string; name: string };\nexport type Group = { group: string; name: string; options: Choice[] };\nexport type ConfigOption = {\n  id: string;\n  name: string;\n  type: string;\n  category?: string | null;\n  currentValue: string;\n  options: (Choice | Group)[];\n};\nexport type Resolution = {\n  status: \"missing-selector\" | \"no-request\" | \"unknown-choice\" | \"ambiguous\" | \"unchanged\" | \"change\";\n  selectorId: string | null;\n  value: string | null;\n};\n\ntype Category = \"model\" | \"mode\" | \"thought_level\";\n\nfunction tokens(option: ConfigOption): Set<string> {\n  const parts = (option.id + \" \" + option.name).split(/[^A-Za-z0-9]+/);\n  const out = new Set<string>();\n  for (const part of parts) {\n    if (part !== \"\") out.add(part.toLowerCase());\n  }\n  return out;\n}\n\nfunction matchesFallback(option: ConfigOption, category: Category): boolean {\n  const t = tokens(option);\n  switch (category) {\n    case \"model\":\n      return t.has(\"model\");\n    case \"mode\":\n      return t.has(\"mode\") || (t.has(\"permission\") && t.has(\"policy\"));\n    case \"thought_level\":\n      return (t.has(\"thought\") && t.has(\"level\")) || (t.has(\"reasoning\") && t.has(\"effort\"));\n    default:\n      return false;\n  }\n}\n\nfunction findSelector(options: ConfigOption[], category: Category): ConfigOption | undefined {\n  const eligible = options.filter(option => option.type === \"select\");\n  const exact = eligible.find(option => option.category === category);\n  if (exact) return exact;\n  return eligible.find(\n    option =>\n      (option.category === undefined || option.category === null || option.category === \"\") &&\n      matchesFallback(option, category)\n  );\n}\n\nfunction isGroup(item: Choice | Group): item is Group {\n  return \"group\" in item && Array.isArray((item as Group).options);\n}\n\nfunction flatten(items: (Choice | Group)[]): Choice[] {\n  const out: Choice[] = [];\n  for (const item of items) {\n    if (isGroup(item)) {\n      for (const choice of item.options) out.push(choice);\n    } else {\n      out.push(item);\n    }\n  }\n  return out;\n}\n\nexport function resolveSelector(options: ConfigOption[], category: Category, request: string): Resolution {\n  const selector = findSelector(options, category);\n  if (!selector) return { status: \"missing-selector\", selectorId: null, value: null };\n\n  const selectorId = selector.id;\n  const wanted = request.trim();\n  if (wanted === \"\") return { status: \"no-request\", selectorId, value: null };\n\n  const choices = flatten(selector.options);\n  const wantedLower = wanted.toLowerCase();\n  const tiers: ((choice: Choice) => boolean)[] = [\n    choice => choice.value === wanted,\n    choice => choice.name === wanted,\n    choice => choice.value.toLowerCase() === wantedLower,\n    choice => choice.name.toLowerCase() === wantedLower,\n  ];\n\n  for (const test of tiers) {\n    const values = new Set<string>();\n    for (const choice of choices) {\n      if (test(choice)) values.add(choice.value);\n    }\n    if (values.size === 0) continue;\n    if (values.size > 1) return { status: \"ambiguous\", selectorId, value: null };\n    const value = values.values().next().value as string;\n    return { status: value === selector.currentValue ? \"unchanged\" : \"change\", selectorId, value };\n  }\n\n  return { status: \"unknown-choice\", selectorId, value: null };\n}",
+    "stopReason": "end_turn",
+    "log": [
+      "reasoning effort selected: medium"
+    ],
+    "ms": 15450,
+    "usage": {
+      "inputTokens": 2,
+      "outputTokens": 1547,
+      "cachedReadTokens": 12107,
+      "cachedWriteTokens": 18625,
+      "totalTokens": 32281
+    }
+  },
+  "score": {
+    "passed": 15,
+    "total": 15,
+    "checks": [
+      {
+        "name": "grouped choices and trimmed case-insensitive request",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "models",
+          "value": "Opus-9"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "models",
+          "value": "Opus-9"
+        }
+      },
+      {
+        "name": "select type and explicit category take precedence over fallback",
+        "passed": true,
+        "actual": {
+          "status": "unchanged",
+          "selectorId": "explicit",
+          "value": "a"
+        },
+        "expected": {
+          "status": "unchanged",
+          "selectorId": "explicit",
+          "value": "a"
+        }
+      },
+      {
+        "name": "mode does not match model substring or another assigned category",
+        "passed": true,
+        "actual": {
+          "status": "missing-selector",
+          "selectorId": null,
+          "value": null
+        },
+        "expected": {
+          "status": "missing-selector",
+          "selectorId": null,
+          "value": null
+        }
+      },
+      {
+        "name": "fallback aliases use unordered whole tokens and first match",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "effort-level",
+          "value": "high"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "effort-level",
+          "value": "high"
+        }
+      },
+      {
+        "name": "permission policy is a mode fallback alias",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "policy",
+          "value": "allow"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "policy",
+          "value": "allow"
+        }
+      },
+      {
+        "name": "exact value outranks earlier exact name",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "chosen"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "chosen"
+        }
+      },
+      {
+        "name": "exact name outranks case-insensitive value",
+        "passed": true,
+        "actual": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "a"
+        },
+        "expected": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "a"
+        }
+      },
+      {
+        "name": "case-insensitive value outranks case-insensitive name",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "TARGET"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "TARGET"
+        }
+      },
+      {
+        "name": "ambiguous exact names do not fall through to a unique weaker tier",
+        "passed": true,
+        "actual": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "duplicate choices with the same value are not ambiguous",
+        "passed": true,
+        "actual": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "x"
+        },
+        "expected": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "x"
+        }
+      },
+      {
+        "name": "case-insensitive matching keeps differently cased values distinct",
+        "passed": true,
+        "actual": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "blank request is a no-op after selector resolution",
+        "passed": true,
+        "actual": {
+          "status": "no-request",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "no-request",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "group name is not a selectable choice",
+        "passed": true,
+        "actual": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "current value is not an implicit choice",
+        "passed": true,
+        "actual": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "choice values and labels retain their own whitespace",
+        "passed": true,
+        "actual": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,1446 @@
+[
+  {
+    "case": "selector-resolution",
+    "protocol": "baseline",
+    "models": {
+      "codex": "gpt-6-astra",
+      "claude": "opus"
+    },
+    "effort": "medium",
+    "turns": 9,
+    "elapsedMs": 174652,
+    "summedTurnMs": 173419,
+    "reportedTokens": 305701,
+    "turnsWithUsage": 9,
+    "final": {
+      "passed": 15,
+      "total": 15,
+      "checks": [
+        {
+          "name": "grouped choices and trimmed case-insensitive request",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "models",
+            "value": "Opus-9"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "models",
+            "value": "Opus-9"
+          }
+        },
+        {
+          "name": "select type and explicit category take precedence over fallback",
+          "passed": true,
+          "actual": {
+            "status": "unchanged",
+            "selectorId": "explicit",
+            "value": "a"
+          },
+          "expected": {
+            "status": "unchanged",
+            "selectorId": "explicit",
+            "value": "a"
+          }
+        },
+        {
+          "name": "mode does not match model substring or another assigned category",
+          "passed": true,
+          "actual": {
+            "status": "missing-selector",
+            "selectorId": null,
+            "value": null
+          },
+          "expected": {
+            "status": "missing-selector",
+            "selectorId": null,
+            "value": null
+          }
+        },
+        {
+          "name": "fallback aliases use unordered whole tokens and first match",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "effort-level",
+            "value": "high"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "effort-level",
+            "value": "high"
+          }
+        },
+        {
+          "name": "permission policy is a mode fallback alias",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "policy",
+            "value": "allow"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "policy",
+            "value": "allow"
+          }
+        },
+        {
+          "name": "exact value outranks earlier exact name",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "m",
+            "value": "chosen"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "m",
+            "value": "chosen"
+          }
+        },
+        {
+          "name": "exact name outranks case-insensitive value",
+          "passed": true,
+          "actual": {
+            "status": "unchanged",
+            "selectorId": "m",
+            "value": "a"
+          },
+          "expected": {
+            "status": "unchanged",
+            "selectorId": "m",
+            "value": "a"
+          }
+        },
+        {
+          "name": "case-insensitive value outranks case-insensitive name",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "m",
+            "value": "TARGET"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "m",
+            "value": "TARGET"
+          }
+        },
+        {
+          "name": "ambiguous exact names do not fall through to a unique weaker tier",
+          "passed": true,
+          "actual": {
+            "status": "ambiguous",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "ambiguous",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "duplicate choices with the same value are not ambiguous",
+          "passed": true,
+          "actual": {
+            "status": "unchanged",
+            "selectorId": "m",
+            "value": "x"
+          },
+          "expected": {
+            "status": "unchanged",
+            "selectorId": "m",
+            "value": "x"
+          }
+        },
+        {
+          "name": "case-insensitive matching keeps differently cased values distinct",
+          "passed": true,
+          "actual": {
+            "status": "ambiguous",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "ambiguous",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "blank request is a no-op after selector resolution",
+          "passed": true,
+          "actual": {
+            "status": "no-request",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "no-request",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "group name is not a selectable choice",
+          "passed": true,
+          "actual": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "current value is not an implicit choice",
+          "passed": true,
+          "actual": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "choice values and labels retain their own whitespace",
+          "passed": true,
+          "actual": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          }
+        }
+      ]
+    },
+    "changes": [
+      {
+        "stage": "01-draft",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "3-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "5-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "7-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "9-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      }
+    ]
+  },
+  {
+    "case": "selector-resolution",
+    "protocol": "refinement",
+    "models": {
+      "codex": "gpt-6-astra",
+      "claude": "opus"
+    },
+    "effort": "medium",
+    "turns": 9,
+    "elapsedMs": 128006,
+    "summedTurnMs": 191931,
+    "reportedTokens": 281879,
+    "turnsWithUsage": 9,
+    "final": {
+      "passed": 15,
+      "total": 15,
+      "checks": [
+        {
+          "name": "grouped choices and trimmed case-insensitive request",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "models",
+            "value": "Opus-9"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "models",
+            "value": "Opus-9"
+          }
+        },
+        {
+          "name": "select type and explicit category take precedence over fallback",
+          "passed": true,
+          "actual": {
+            "status": "unchanged",
+            "selectorId": "explicit",
+            "value": "a"
+          },
+          "expected": {
+            "status": "unchanged",
+            "selectorId": "explicit",
+            "value": "a"
+          }
+        },
+        {
+          "name": "mode does not match model substring or another assigned category",
+          "passed": true,
+          "actual": {
+            "status": "missing-selector",
+            "selectorId": null,
+            "value": null
+          },
+          "expected": {
+            "status": "missing-selector",
+            "selectorId": null,
+            "value": null
+          }
+        },
+        {
+          "name": "fallback aliases use unordered whole tokens and first match",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "effort-level",
+            "value": "high"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "effort-level",
+            "value": "high"
+          }
+        },
+        {
+          "name": "permission policy is a mode fallback alias",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "policy",
+            "value": "allow"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "policy",
+            "value": "allow"
+          }
+        },
+        {
+          "name": "exact value outranks earlier exact name",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "m",
+            "value": "chosen"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "m",
+            "value": "chosen"
+          }
+        },
+        {
+          "name": "exact name outranks case-insensitive value",
+          "passed": true,
+          "actual": {
+            "status": "unchanged",
+            "selectorId": "m",
+            "value": "a"
+          },
+          "expected": {
+            "status": "unchanged",
+            "selectorId": "m",
+            "value": "a"
+          }
+        },
+        {
+          "name": "case-insensitive value outranks case-insensitive name",
+          "passed": true,
+          "actual": {
+            "status": "change",
+            "selectorId": "m",
+            "value": "TARGET"
+          },
+          "expected": {
+            "status": "change",
+            "selectorId": "m",
+            "value": "TARGET"
+          }
+        },
+        {
+          "name": "ambiguous exact names do not fall through to a unique weaker tier",
+          "passed": true,
+          "actual": {
+            "status": "ambiguous",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "ambiguous",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "duplicate choices with the same value are not ambiguous",
+          "passed": true,
+          "actual": {
+            "status": "unchanged",
+            "selectorId": "m",
+            "value": "x"
+          },
+          "expected": {
+            "status": "unchanged",
+            "selectorId": "m",
+            "value": "x"
+          }
+        },
+        {
+          "name": "case-insensitive matching keeps differently cased values distinct",
+          "passed": true,
+          "actual": {
+            "status": "ambiguous",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "ambiguous",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "blank request is a no-op after selector resolution",
+          "passed": true,
+          "actual": {
+            "status": "no-request",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "no-request",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "group name is not a selectable choice",
+          "passed": true,
+          "actual": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "current value is not an implicit choice",
+          "passed": true,
+          "actual": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          }
+        },
+        {
+          "name": "choice values and labels retain their own whitespace",
+          "passed": true,
+          "actual": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          },
+          "expected": {
+            "status": "unknown-choice",
+            "selectorId": "m",
+            "value": null
+          }
+        }
+      ]
+    },
+    "changes": [
+      {
+        "stage": "02-opus-draft",
+        "member": "claude",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "01-astra-draft",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "06-opus-revision",
+        "member": "claude",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "05-astra-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "09-synthesis",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      }
+    ]
+  },
+  {
+    "case": "streamed-turn-assembly",
+    "protocol": "refinement",
+    "models": {
+      "codex": "gpt-6-astra",
+      "claude": "opus"
+    },
+    "effort": "medium",
+    "turns": 9,
+    "elapsedMs": 82637,
+    "summedTurnMs": 131335,
+    "reportedTokens": 273394,
+    "turnsWithUsage": 9,
+    "final": {
+      "passed": 15,
+      "total": 15,
+      "checks": [
+        {
+          "name": "empty stream preserves initial state",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "message append preserves whitespace and empty chunks",
+          "passed": true,
+          "actual": {
+            "text": " A\nB\t",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": " A\nB\t",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "message replacement can clear accumulated text",
+          "passed": true,
+          "actual": {
+            "text": "final",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "final",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "another turn cannot append text or terminate this turn",
+          "passed": true,
+          "actual": {
+            "text": "ours",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "ours",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "thoughts and unknown event kinds do not become visible text or tools",
+          "passed": true,
+          "actual": {
+            "text": "visible",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "visible",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "first partial tool event uses defaults",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "pending",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "pending",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "partial updates preserve other fields and append output",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Read",
+                "status": "completed",
+                "output": "line 1\nline 2"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Read",
+                "status": "completed",
+                "output": "line 1\nline 2"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "explicit empty title and replacement output clear their fields",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "running",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "running",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "null output clears before later append",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "pending",
+                "output": "new"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "pending",
+                "output": "new"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "numeric-looking tool ids retain first appearance order",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "10",
+                "title": "First",
+                "status": "pending",
+                "output": "ac"
+              },
+              {
+                "id": "2",
+                "title": "Second",
+                "status": "pending",
+                "output": "b"
+              },
+              {
+                "id": "1",
+                "title": "Third",
+                "status": "pending",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "10",
+                "title": "First",
+                "status": "pending",
+                "output": "ac"
+              },
+              {
+                "id": "2",
+                "title": "Second",
+                "status": "pending",
+                "output": "b"
+              },
+              {
+                "id": "1",
+                "title": "Third",
+                "status": "pending",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "first relevant completion freezes all accumulated state",
+          "passed": true,
+          "actual": {
+            "text": "done",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "completed",
+                "output": "ok"
+              }
+            ],
+            "stopReason": ""
+          },
+          "expected": {
+            "text": "done",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "completed",
+                "output": "ok"
+              }
+            ],
+            "stopReason": ""
+          }
+        },
+        {
+          "name": "foreign tool updates cannot create or overwrite this turn's tools",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Ours",
+                "status": "pending",
+                "output": "ours"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Ours",
+                "status": "pending",
+                "output": "ours"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "object-property names and empty ids remain independent tool ids",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "__proto__",
+                "title": "",
+                "status": "pending",
+                "output": "ad"
+              },
+              {
+                "id": "constructor",
+                "title": "",
+                "status": "pending",
+                "output": "b"
+              },
+              {
+                "id": "",
+                "title": "",
+                "status": "pending",
+                "output": "c"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "__proto__",
+                "title": "",
+                "status": "pending",
+                "output": "ad"
+              },
+              {
+                "id": "constructor",
+                "title": "",
+                "status": "pending",
+                "output": "b"
+              },
+              {
+                "id": "",
+                "title": "",
+                "status": "pending",
+                "output": "c"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "output mode alone preserves output and status is allowed to reopen",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Run",
+                "status": "running",
+                "output": "diagnostic"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Run",
+                "status": "running",
+                "output": "diagnostic"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "nonempty output replacement and normal completion preserve visible message",
+          "passed": true,
+          "actual": {
+            "text": "Finished.",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Run",
+                "status": "completed",
+                "output": "result"
+              }
+            ],
+            "stopReason": "end_turn"
+          },
+          "expected": {
+            "text": "Finished.",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Run",
+                "status": "completed",
+                "output": "result"
+              }
+            ],
+            "stopReason": "end_turn"
+          }
+        }
+      ]
+    },
+    "changes": [
+      {
+        "stage": "02-opus-draft",
+        "member": "claude",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "01-astra-draft",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "06-opus-revision",
+        "member": "claude",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "05-astra-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "09-synthesis",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      }
+    ]
+  },
+  {
+    "case": "streamed-turn-assembly",
+    "protocol": "baseline",
+    "models": {
+      "codex": "gpt-6-astra",
+      "claude": "opus"
+    },
+    "effort": "medium",
+    "turns": 9,
+    "elapsedMs": 126985,
+    "summedTurnMs": 125956,
+    "reportedTokens": 292315,
+    "turnsWithUsage": 9,
+    "final": {
+      "passed": 15,
+      "total": 15,
+      "checks": [
+        {
+          "name": "empty stream preserves initial state",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "message append preserves whitespace and empty chunks",
+          "passed": true,
+          "actual": {
+            "text": " A\nB\t",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": " A\nB\t",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "message replacement can clear accumulated text",
+          "passed": true,
+          "actual": {
+            "text": "final",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "final",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "another turn cannot append text or terminate this turn",
+          "passed": true,
+          "actual": {
+            "text": "ours",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "ours",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "thoughts and unknown event kinds do not become visible text or tools",
+          "passed": true,
+          "actual": {
+            "text": "visible",
+            "tools": [],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "visible",
+            "tools": [],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "first partial tool event uses defaults",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "pending",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "pending",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "partial updates preserve other fields and append output",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Read",
+                "status": "completed",
+                "output": "line 1\nline 2"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Read",
+                "status": "completed",
+                "output": "line 1\nline 2"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "explicit empty title and replacement output clear their fields",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "running",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "running",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "null output clears before later append",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "pending",
+                "output": "new"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "pending",
+                "output": "new"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "numeric-looking tool ids retain first appearance order",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "10",
+                "title": "First",
+                "status": "pending",
+                "output": "ac"
+              },
+              {
+                "id": "2",
+                "title": "Second",
+                "status": "pending",
+                "output": "b"
+              },
+              {
+                "id": "1",
+                "title": "Third",
+                "status": "pending",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "10",
+                "title": "First",
+                "status": "pending",
+                "output": "ac"
+              },
+              {
+                "id": "2",
+                "title": "Second",
+                "status": "pending",
+                "output": "b"
+              },
+              {
+                "id": "1",
+                "title": "Third",
+                "status": "pending",
+                "output": ""
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "first relevant completion freezes all accumulated state",
+          "passed": true,
+          "actual": {
+            "text": "done",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "completed",
+                "output": "ok"
+              }
+            ],
+            "stopReason": ""
+          },
+          "expected": {
+            "text": "done",
+            "tools": [
+              {
+                "id": "a",
+                "title": "",
+                "status": "completed",
+                "output": "ok"
+              }
+            ],
+            "stopReason": ""
+          }
+        },
+        {
+          "name": "foreign tool updates cannot create or overwrite this turn's tools",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Ours",
+                "status": "pending",
+                "output": "ours"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Ours",
+                "status": "pending",
+                "output": "ours"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "object-property names and empty ids remain independent tool ids",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "__proto__",
+                "title": "",
+                "status": "pending",
+                "output": "ad"
+              },
+              {
+                "id": "constructor",
+                "title": "",
+                "status": "pending",
+                "output": "b"
+              },
+              {
+                "id": "",
+                "title": "",
+                "status": "pending",
+                "output": "c"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "__proto__",
+                "title": "",
+                "status": "pending",
+                "output": "ad"
+              },
+              {
+                "id": "constructor",
+                "title": "",
+                "status": "pending",
+                "output": "b"
+              },
+              {
+                "id": "",
+                "title": "",
+                "status": "pending",
+                "output": "c"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "output mode alone preserves output and status is allowed to reopen",
+          "passed": true,
+          "actual": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Run",
+                "status": "running",
+                "output": "diagnostic"
+              }
+            ],
+            "stopReason": null
+          },
+          "expected": {
+            "text": "",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Run",
+                "status": "running",
+                "output": "diagnostic"
+              }
+            ],
+            "stopReason": null
+          }
+        },
+        {
+          "name": "nonempty output replacement and normal completion preserve visible message",
+          "passed": true,
+          "actual": {
+            "text": "Finished.",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Run",
+                "status": "completed",
+                "output": "result"
+              }
+            ],
+            "stopReason": "end_turn"
+          },
+          "expected": {
+            "text": "Finished.",
+            "tools": [
+              {
+                "id": "a",
+                "title": "Run",
+                "status": "completed",
+                "output": "result"
+              }
+            ],
+            "stopReason": "end_turn"
+          }
+        }
+      ]
+    },
+    "changes": [
+      {
+        "stage": "01-draft",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "3-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "5-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "7-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      },
+      {
+        "stage": "9-revision",
+        "member": "codex",
+        "passed": 15,
+        "recoveries": 0,
+        "regressions": 0
+      }
+    ]
+  }
+]

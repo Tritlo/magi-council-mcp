@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-05T13:38:18.887Z",
+  "toolNames": [
+    "ask_codex",
+    "codex_reply",
+    "ask_claude",
+    "claude_reply",
+    "ask_copilot",
+    "copilot_reply",
+    "ask_grok",
+    "grok_reply",
+    "grok_generate",
+    "delegate_codex",
+    "delegate_claude",
+    "delegate_copilot",
+    "delegate_grok",
+    "review_plan",
+    "review_diff",
+    "brainstorm",
+    "explore",
+    "consult",
+    "available_councilors",
+    "permit",
+    "reset",
+    "status"
+  ],
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "⚠️ Host not recognized (clientInfo: magi-compatibility-smoke); all roster members are participating, so one of these voices may be you. Set `MAGI_COUNCIL_EXCLUDE=claude|codex|copilot|grok` to exclude yourself.\n\n---\n\n### Codex\n\nI’ll read `probe.txt` exactly as stored.\nmagi-a524e168-3a34-43f5-8088-2af6495a11b3\n\n_11.6s · 23.6k tok_\n\n---\n\n### Claude\n\nmagi-a524e168-3a34-43f5-8088-2af6495a11b3\n\n_8.7s · 63.8k tok_\n\n---\n\n_You (the host agent) are the lead **and a participant** in this deliberation. Read these views and form your own position. **Unless you and the council have reached agreement, call `consult` again** with `my_take` set to your current position (and any new framing in `context`) to run the next round — the advisors keep their context and will respond to you. Iterate until you judge agreement is reached, then act on it. (Or ask one directly with ask_codex / ask_copilot / ask_grok / ask_claude.)_"
+      }
+    ]
+  },
+  "status": {
+    "content": [
+      {
+        "type": "text",
+        "text": "workspace: /tmp/magi-mcp-smoke-In8lA9\nhost: unknown — all roster members active (source=unknown, clientInfo=\"magi-compatibility-smoke\"); set MAGI_COUNCIL_EXCLUDE to exclude the host\nroster: Codex, Copilot, Grok, Claude\ncouncil: Codex, Copilot, Grok, Claude\n\nCodex:\n  acp command: bunx @agentclientprotocol/codex-acp@2.1.1\n  guardian: external-reads off · writes off · commands off\n  session: started · subprocess: alive\n  model: gpt-6-astra · mode: read-only · reasoning effort: medium\n  no pending permission\n  no stderr captured\nCopilot:\n  acp command: bunx @github/copilot@1.0.91 --acp\n  guardian: external-reads off · writes off · commands off\n  session: not started · subprocess: down\n  model: not reported · mode: not reported · reasoning effort: not reported\n  no pending permission\n  no stderr captured\nGrok:\n  acp command: grok agent stdio\n  guardian: external-reads off · writes off · commands off\n  session: not started · subprocess: down\n  model: not reported · mode: not reported · reasoning effort: not reported\n  no pending permission\n  no stderr captured\nClaude:\n  acp command: bunx @agentclientprotocol/claude-agent-acp@0.86.0\n  guardian: external-reads off · writes off · commands off\n  session: started · subprocess: alive\n  model: opus · mode: default · reasoning effort: medium\n  no pending permission\n  recent stderr:\n6746590-55fe-480a-aff2-cd439edf562b phase=prepare-query durationMs=8 totalMs=25\n[session/create] sessionId=96746590-55fe-480a-aff2-cd439edf562b phase=sdk-initialize durationMs=647 totalMs=672\n[session/create] sessionId=96746590-55fe-480a-aff2-cd439edf562b phase=models durationMs=1 totalMs=673\n[session/create] sessionId=96746590-55fe-480a-aff2-cd439edf562b phase=modes durationMs=0 totalMs=673\n[session/create] sessionId=96746590-55fe-480a-aff2-cd439edf562b phase=agents durationMs=0 totalMs=673\n[session/create] sessionId=96746590-55fe-480a-aff2-cd439edf562b phase=register durationMs=1 totalMs=674"
+      }
+    ]
+  },
+  "passed": true
+}

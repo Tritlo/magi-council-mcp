@@ -1,0 +1,128 @@
+{
+  "date": "2026-10-05T13:51:59.613Z",
+  "workspaceRoot": "/tmp/magi-harness-smoke-HRyQM6",
+  "results": [
+    {
+      "id": "grok",
+      "command": [
+        "grok",
+        "--permission-mode",
+        "default",
+        "agent",
+        "stdio"
+      ],
+      "inventory": {
+        "name": "Grok",
+        "sessionStarted": true,
+        "model": {
+          "selector": {
+            "id": "model",
+            "name": "Model"
+          },
+          "current": "grok-4.7",
+          "choices": [
+            {
+              "value": "grok-4.7",
+              "name": "Grok 4.7",
+              "current": true
+            },
+            {
+              "value": "grok-4.7-build-fast",
+              "name": "Grok 4.7 Fast",
+              "current": false
+            },
+            {
+              "value": "grok-4.6",
+              "name": "Grok 4.6",
+              "current": false
+            },
+            {
+              "value": "grok-4.5",
+              "name": "Grok 4.5",
+              "current": false
+            }
+          ]
+        },
+        "mode": {
+          "choices": []
+        },
+        "thoughtLevel": {
+          "selector": {
+            "id": "reasoning_effort",
+            "name": "Reasoning Effort"
+          },
+          "current": "xhigh",
+          "choices": [
+            {
+              "value": "xhigh",
+              "name": "Extra High",
+              "description": "Maximum reasoning for the hardest tasks.",
+              "current": true
+            },
+            {
+              "value": "high",
+              "name": "High",
+              "description": "Thorough reasoning and quality. Recommended.",
+              "current": false
+            },
+            {
+              "value": "medium",
+              "name": "Medium",
+              "description": "Strong quality with a faster turnaround.",
+              "current": false
+            },
+            {
+              "value": "low",
+              "name": "Low",
+              "description": "Fastest responses. Best for simple tasks.",
+              "current": false
+            }
+          ]
+        }
+      },
+      "outcome": {
+        "type": "answer",
+        "result": {
+          "text": "I'll read `probe.txt` and reply with its exact contents.magi-cd0cdeba-36db-4371-96f8-2ecd99889340",
+          "stopReason": "end_turn",
+          "log": [
+            "reasoning effort selected: medium",
+            "tool: read_file"
+          ],
+          "ms": 6618
+        }
+      },
+      "writeProbe": {
+        "type": "answer",
+        "result": {
+          "text": "I'll try to create `denied-grok.txt` with the write tool and stop if that is denied.The write succeeded. I'll get the current time so the report can start with a timestamp.[2026-10-05 15:51] The write tool created `denied-grok.txt` with the contents `probe`. The write was allowed.",
+          "stopReason": "end_turn",
+          "log": [
+            "tool: write",
+            "tool: run_terminal_command",
+            "tool: run_terminal_command"
+          ],
+          "ms": 13264
+        }
+      },
+      "readPassed": true,
+      "writeDenied": false,
+      "passed": false,
+      "status": {
+        "name": "Grok",
+        "workspaceRoot": "/tmp/magi-harness-smoke-HRyQM6",
+        "acpCommand": "grok --permission-mode default agent stdio",
+        "guardian": {
+          "externalReads": false,
+          "writes": false,
+          "commands": false
+        },
+        "sessionStarted": true,
+        "currentModel": "grok-4.7",
+        "currentThoughtLevel": "medium",
+        "childAlive": true,
+        "stderrTail": ""
+      }
+    }
+  ]
+}

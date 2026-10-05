@@ -1,0 +1,422 @@
+{
+  "prompt": "This is a self-contained code experiment. Use only the supplied problem and artifacts. Do not use tools, access files, consult other agents, or search. The evaluator is unavailable. Keep critiques below 250 words. For implementation turns, return only the complete TypeScript source, without Markdown fences or prose.\n\nDecide the final implementation using the specification and both critiques. Agreement alone is insufficient. Preserve correct behavior and repair demonstrated errors. Return the complete implementation.\n\n<peer_critique>\n**Verdict:** I found no correctness issue in either implementation. For every input that matches the spec, both produce the same `Turn`.\n\n**Where the peer and I agree:**\n- **Turn filter:** both compare `turnId` exactly before anything else. A `done` event for another turn is skipped and does not stop processing.\n- **Done:** the first relevant `done` event sets `stopReason` and breaks the loop. The peer checks `done` before the other kinds, but that order changes nothing because the kinds are exclusive.\n- **Messages:** both append by default. Both replace the whole message when `mode` is `\"replace\"`, also for empty text.\n- **Tool lookup:** both look tools up in a `Map`, so ids such as `\"__proto__\"` or `\"constructor\"` are safe. Both create a tool as `{id, title:\"\", status:\"pending\", output:\"\"}` before applying the event's fields.\n- **Tool updates:** both apply the output rules the same way. `null` clears the output, an omitted output keeps it, and a string output appends or replaces. A supplied status always replaces the old one, and an empty title clears the title.\n- **Unknown kinds:** `thought` and unknown kinds have no effect in either version.\n\n**Where we differ (none of this matters under the spec):**\n1. **Field checks:** the peer tests `!== undefined` for title and status. I test `typeof === \"string\"`. Both behave the same for valid inputs. Off-spec, the peer would store a `null` title and I would ignore it.\n2. **Message text:** the peer casts `event.text` straight to a string. I fall back to `\"\"` when it is not a string. A missing `text` would make the peer append `\"undefined\"`, but the spec says `text` is always a string.\n3. **Returned tools:** the peer returns its internal tool objects directly. Each object holds exactly the four `Tool` fields, so nothing extra leaks out and it is still correct. My copy step is not strictly needed.\n4. **Tool order:** the peer keeps a separate array to record the order of first appearance. A `Map` already iterates in insertion order, so that array is redundant but harmless.\n\nThe peer's version is a bit leaner (it skips the copy step) but carries one redundant array. Mine is a bit more defensive than the spec needs. I would keep mine as it is.\n</peer_critique>\n<your_critique>\n[2026-10-05] Both implementations satisfy the stated contract. I found no concrete correctness issue or valid-input counterexample in the peer implementation.\n\nJustified agreements:\n\n- Both filter by exact turn id before processing and stop at the first relevant `done`.\n- Both implement message append and replace correctly, including empty strings.\n- Both use `Map`, which safely handles ids such as `\"__proto__\"` and `\"constructor\"`.\n- Both preserve tool defaults, omitted fields, empty titles, and unrestricted status transitions.\n- Both distinguish omitted output, null output, and string output correctly.\n- Both ignore thoughts and unknown kinds and return exactly the required fields.\n\nThe peer relies on `Map` insertion order instead of maintaining my separate array. This correctly preserves first appearance order: updating an existing tool does not change its position. It also removes redundant bookkeeping.\n\nThe peer copies tools when constructing the result. Those copies are unnecessary because its internal tool objects already contain exactly the required fields and are not shared with the input. They are nevertheless correct.\n\nIts runtime string checks are also unnecessary under the guaranteed input types. They differ from my assertions only for inputs outside the contract. In particular, checking that status is a string does not validate membership in the allowed statuses, but such validation is not required.\n\nThese conclusions are based on inspection; the evaluator is unavailable.\n</your_critique>",
+  "stage": "09-synthesis",
+  "member": "codex",
+  "result": {
+    "text": "type Event = {\n  turnId: string;\n  kind: string;\n  [key: string]: unknown;\n};\n\ntype Tool = {\n  id: string;\n  title: string;\n  status: \"pending\" | \"running\" | \"completed\" | \"failed\";\n  output: string;\n};\n\ntype Turn = {\n  text: string;\n  tools: Tool[];\n  stopReason: string | null;\n};\n\nexport function assembleTurn(turnId: string, events: Event[]): Turn {\n  let text = \"\";\n  let stopReason: string | null = null;\n  const tools = new Map<string, Tool>();\n\n  for (const event of events) {\n    if (event.turnId !== turnId) continue;\n\n    if (event.kind === \"done\") {\n      stopReason = event.stopReason as string;\n      break;\n    }\n\n    if (event.kind === \"message\") {\n      const message = event.text as string;\n      text = event.mode === \"replace\" ? message : text + message;\n      continue;\n    }\n\n    if (event.kind !== \"tool\") continue;\n\n    const id = event.id as string;\n    let tool = tools.get(id);\n\n    if (tool === undefined) {\n      tool = { id, title: \"\", status: \"pending\", output: \"\" };\n      tools.set(id, tool);\n    }\n\n    if (event.title !== undefined) {\n      tool.title = event.title as string;\n    }\n\n    if (event.status !== undefined) {\n      tool.status = event.status as Tool[\"status\"];\n    }\n\n    if (event.output === null) {\n      tool.output = \"\";\n    } else if (typeof event.output === \"string\") {\n      tool.output =\n        event.outputMode === \"replace\"\n          ? event.output\n          : tool.output + event.output;\n    }\n  }\n\n  return { text, tools: Array.from(tools.values()), stopReason };\n}",
+    "stopReason": "end_turn",
+    "log": [],
+    "ms": 14152,
+    "usage": {
+      "totalTokens": 27475,
+      "inputTokens": 1353,
+      "cachedReadTokens": 25728,
+      "outputTokens": 394,
+      "thoughtTokens": 0
+    }
+  },
+  "score": {
+    "passed": 15,
+    "total": 15,
+    "checks": [
+      {
+        "name": "empty stream preserves initial state",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "message append preserves whitespace and empty chunks",
+        "passed": true,
+        "actual": {
+          "text": " A\nB\t",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": " A\nB\t",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "message replacement can clear accumulated text",
+        "passed": true,
+        "actual": {
+          "text": "final",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "final",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "another turn cannot append text or terminate this turn",
+        "passed": true,
+        "actual": {
+          "text": "ours",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "ours",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "thoughts and unknown event kinds do not become visible text or tools",
+        "passed": true,
+        "actual": {
+          "text": "visible",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "visible",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "first partial tool event uses defaults",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "pending",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "pending",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "partial updates preserve other fields and append output",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Read",
+              "status": "completed",
+              "output": "line 1\nline 2"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Read",
+              "status": "completed",
+              "output": "line 1\nline 2"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "explicit empty title and replacement output clear their fields",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "running",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "running",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "null output clears before later append",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "pending",
+              "output": "new"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "pending",
+              "output": "new"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "numeric-looking tool ids retain first appearance order",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "10",
+              "title": "First",
+              "status": "pending",
+              "output": "ac"
+            },
+            {
+              "id": "2",
+              "title": "Second",
+              "status": "pending",
+              "output": "b"
+            },
+            {
+              "id": "1",
+              "title": "Third",
+              "status": "pending",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "10",
+              "title": "First",
+              "status": "pending",
+              "output": "ac"
+            },
+            {
+              "id": "2",
+              "title": "Second",
+              "status": "pending",
+              "output": "b"
+            },
+            {
+              "id": "1",
+              "title": "Third",
+              "status": "pending",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "first relevant completion freezes all accumulated state",
+        "passed": true,
+        "actual": {
+          "text": "done",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "completed",
+              "output": "ok"
+            }
+          ],
+          "stopReason": ""
+        },
+        "expected": {
+          "text": "done",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "completed",
+              "output": "ok"
+            }
+          ],
+          "stopReason": ""
+        }
+      },
+      {
+        "name": "foreign tool updates cannot create or overwrite this turn's tools",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Ours",
+              "status": "pending",
+              "output": "ours"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Ours",
+              "status": "pending",
+              "output": "ours"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "object-property names and empty ids remain independent tool ids",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "__proto__",
+              "title": "",
+              "status": "pending",
+              "output": "ad"
+            },
+            {
+              "id": "constructor",
+              "title": "",
+              "status": "pending",
+              "output": "b"
+            },
+            {
+              "id": "",
+              "title": "",
+              "status": "pending",
+              "output": "c"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "__proto__",
+              "title": "",
+              "status": "pending",
+              "output": "ad"
+            },
+            {
+              "id": "constructor",
+              "title": "",
+              "status": "pending",
+              "output": "b"
+            },
+            {
+              "id": "",
+              "title": "",
+              "status": "pending",
+              "output": "c"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "output mode alone preserves output and status is allowed to reopen",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Run",
+              "status": "running",
+              "output": "diagnostic"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Run",
+              "status": "running",
+              "output": "diagnostic"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "nonempty output replacement and normal completion preserve visible message",
+        "passed": true,
+        "actual": {
+          "text": "Finished.",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Run",
+              "status": "completed",
+              "output": "result"
+            }
+          ],
+          "stopReason": "end_turn"
+        },
+        "expected": {
+          "text": "Finished.",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Run",
+              "status": "completed",
+              "output": "result"
+            }
+          ],
+          "stopReason": "end_turn"
+        }
+      }
+    ]
+  }
+}

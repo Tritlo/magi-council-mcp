@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-05T13:34:58.548Z",
+  "models": {
+    "codex": "gpt-6-astra",
+    "claude": "opus"
+  },
+  "effort": "medium",
+  "commands": {
+    "codex": [
+      "bunx",
+      "@agentclientprotocol/codex-acp@2.1.1"
+    ],
+    "claude": [
+      "bunx",
+      "@agentclientprotocol/claude-agent-acp@0.86.0"
+    ]
+  },
+  "budget": "9 calls per condition: 5 Astra, 4 Opus. 180 second wall limit per call. Token budgets are not enforced by ACP.",
+  "evaluation": "Two synthetic, deterministic repair tasks; 15 held-out checks each. Scores never enter agent prompts."
+}

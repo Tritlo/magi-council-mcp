@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "implementations": 20,
+  "results": [
+    {
+      "file": "streamed-turn-assembly/baseline/3-revision.json",
+      "errors": []
+    },
+    {
+      "file": "streamed-turn-assembly/baseline/5-revision.json",
+      "errors": []
+    },
+    {
+      "file": "streamed-turn-assembly/baseline/9-revision.json",
+      "errors": []
+    },
+    {
+      "file": "streamed-turn-assembly/baseline/7-revision.json",
+      "errors": []
+    },
+    {
+      "file": "streamed-turn-assembly/baseline/01-draft.json",
+      "errors": []
+    },
+    {
+      "file": "streamed-turn-assembly/refinement/02-opus-draft.json",
+      "errors": []
+    },
+    {
+      "file": "streamed-turn-assembly/refinement/01-astra-draft.json",
+      "errors": []
+    },
+    {
+      "file": "streamed-turn-assembly/refinement/05-astra-revision.json",
+      "errors": []
+    },
+    {
+      "file": "streamed-turn-assembly/refinement/09-synthesis.json",
+      "errors": []
+    },
+    {
+      "file": "streamed-turn-assembly/refinement/06-opus-revision.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/baseline/3-revision.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/baseline/5-revision.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/baseline/9-revision.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/baseline/7-revision.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/baseline/01-draft.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/refinement/02-opus-draft.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/refinement/01-astra-draft.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/refinement/05-astra-revision.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/refinement/09-synthesis.json",
+      "errors": []
+    },
+    {
+      "file": "selector-resolution/refinement/06-opus-revision.json",
+      "errors": []
+    }
+  ]
+}

@@ -1,0 +1,234 @@
+{
+  "prompt": "This is a self-contained code experiment. Use only the supplied problem and artifacts. Do not use tools, access files, consult other agents, or search. The evaluator is unavailable. Keep critiques below 250 words. For implementation turns, return only the complete TypeScript source, without Markdown fences or prose.\n\nReconsider your critique against the specification, then revise your implementation. Preserve correct behavior. Return the complete implementation.",
+  "stage": "06-opus-revision",
+  "member": "claude",
+  "result": {
+    "text": "export type Choice = { value: string; name: string };\nexport type Group = { group: string; name: string; options: Choice[] };\nexport type ConfigOption = {\n  id: string;\n  name: string;\n  type: string;\n  category?: string | null;\n  currentValue: string;\n  options: (Choice | Group)[];\n};\nexport type Resolution = {\n  status: \"missing-selector\" | \"no-request\" | \"unknown-choice\" | \"ambiguous\" | \"unchanged\" | \"change\";\n  selectorId: string | null;\n  value: string | null;\n};\n\nfunction tokens(option: ConfigOption): Set<string> {\n  const out = new Set<string>();\n  for (const part of (option.id + \" \" + option.name).split(/[^A-Za-z0-9]+/)) {\n    if (part !== \"\") out.add(part.toLowerCase());\n  }\n  return out;\n}\n\nfunction matchesFallback(option: ConfigOption, category: \"model\" | \"mode\" | \"thought_level\"): boolean {\n  const t = tokens(option);\n  if (category === \"model\") return t.has(\"model\");\n  if (category === \"mode\") return t.has(\"mode\") || (t.has(\"permission\") && t.has(\"policy\"));\n  return (t.has(\"thought\") && t.has(\"level\")) || (t.has(\"reasoning\") && t.has(\"effort\"));\n}\n\nfunction findSelector(\n  options: ConfigOption[],\n  category: \"model\" | \"mode\" | \"thought_level\"\n): ConfigOption | undefined {\n  const eligible = options.filter(option => option.type === \"select\");\n  const exact = eligible.find(option => option.category === category);\n  if (exact) return exact;\n  return eligible.find(\n    option =>\n      (option.category === undefined || option.category === null || option.category === \"\") &&\n      matchesFallback(option, category)\n  );\n}\n\nfunction flatten(items: (Choice | Group)[]): Choice[] {\n  const out: Choice[] = [];\n  for (const item of items) {\n    if (\"group\" in item) out.push(...item.options);\n    else out.push(item);\n  }\n  return out;\n}\n\nexport function resolveSelector(\n  options: ConfigOption[],\n  category: \"model\" | \"mode\" | \"thought_level\",\n  request: string\n): Resolution {\n  const selector = findSelector(options, category);\n  if (!selector) return { status: \"missing-selector\", selectorId: null, value: null };\n\n  const selectorId = selector.id;\n  const wanted = request.trim();\n  if (wanted === \"\") return { status: \"no-request\", selectorId, value: null };\n\n  const choices = flatten(selector.options);\n  const wantedLower = wanted.toLowerCase();\n  const tiers: ((choice: Choice) => boolean)[] = [\n    choice => choice.value === wanted,\n    choice => choice.name === wanted,\n    choice => choice.value.toLowerCase() === wantedLower,\n    choice => choice.name.toLowerCase() === wantedLower,\n  ];\n\n  for (const test of tiers) {\n    const values = new Set<string>();\n    for (const choice of choices) {\n      if (test(choice)) values.add(choice.value);\n    }\n    if (values.size === 0) continue;\n    if (values.size > 1) return { status: \"ambiguous\", selectorId, value: null };\n    const [value] = values;\n    return { status: value === selector.currentValue ? \"unchanged\" : \"change\", selectorId, value };\n  }\n\n  return { status: \"unknown-choice\", selectorId, value: null };\n}",
+    "stopReason": "end_turn",
+    "log": [],
+    "ms": 10663,
+    "usage": {
+      "inputTokens": 2,
+      "outputTokens": 1137,
+      "cachedReadTokens": 35791,
+      "cachedWriteTokens": 1543,
+      "totalTokens": 38473
+    }
+  },
+  "score": {
+    "passed": 15,
+    "total": 15,
+    "checks": [
+      {
+        "name": "grouped choices and trimmed case-insensitive request",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "models",
+          "value": "Opus-9"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "models",
+          "value": "Opus-9"
+        }
+      },
+      {
+        "name": "select type and explicit category take precedence over fallback",
+        "passed": true,
+        "actual": {
+          "status": "unchanged",
+          "selectorId": "explicit",
+          "value": "a"
+        },
+        "expected": {
+          "status": "unchanged",
+          "selectorId": "explicit",
+          "value": "a"
+        }
+      },
+      {
+        "name": "mode does not match model substring or another assigned category",
+        "passed": true,
+        "actual": {
+          "status": "missing-selector",
+          "selectorId": null,
+          "value": null
+        },
+        "expected": {
+          "status": "missing-selector",
+          "selectorId": null,
+          "value": null
+        }
+      },
+      {
+        "name": "fallback aliases use unordered whole tokens and first match",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "effort-level",
+          "value": "high"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "effort-level",
+          "value": "high"
+        }
+      },
+      {
+        "name": "permission policy is a mode fallback alias",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "policy",
+          "value": "allow"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "policy",
+          "value": "allow"
+        }
+      },
+      {
+        "name": "exact value outranks earlier exact name",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "chosen"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "chosen"
+        }
+      },
+      {
+        "name": "exact name outranks case-insensitive value",
+        "passed": true,
+        "actual": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "a"
+        },
+        "expected": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "a"
+        }
+      },
+      {
+        "name": "case-insensitive value outranks case-insensitive name",
+        "passed": true,
+        "actual": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "TARGET"
+        },
+        "expected": {
+          "status": "change",
+          "selectorId": "m",
+          "value": "TARGET"
+        }
+      },
+      {
+        "name": "ambiguous exact names do not fall through to a unique weaker tier",
+        "passed": true,
+        "actual": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "duplicate choices with the same value are not ambiguous",
+        "passed": true,
+        "actual": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "x"
+        },
+        "expected": {
+          "status": "unchanged",
+          "selectorId": "m",
+          "value": "x"
+        }
+      },
+      {
+        "name": "case-insensitive matching keeps differently cased values distinct",
+        "passed": true,
+        "actual": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "ambiguous",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "blank request is a no-op after selector resolution",
+        "passed": true,
+        "actual": {
+          "status": "no-request",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "no-request",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "group name is not a selectable choice",
+        "passed": true,
+        "actual": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "current value is not an implicit choice",
+        "passed": true,
+        "actual": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        }
+      },
+      {
+        "name": "choice values and labels retain their own whitespace",
+        "passed": true,
+        "actual": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        },
+        "expected": {
+          "status": "unknown-choice",
+          "selectorId": "m",
+          "value": null
+        }
+      }
+    ]
+  }
+}

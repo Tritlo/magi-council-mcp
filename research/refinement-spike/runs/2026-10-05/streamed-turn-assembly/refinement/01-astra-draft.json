@@ -1,0 +1,424 @@
+{
+  "prompt": "This is a self-contained code experiment. Use only the supplied problem and artifacts. Do not use tools, access files, consult other agents, or search. The evaluator is unavailable. Keep critiques below 250 words. For implementation turns, return only the complete TypeScript source, without Markdown fences or prose.\n\nRepair assembleTurn for a council client that receives interleaved streaming events. Return one self-contained TypeScript source file with the exported synchronous function and any local types or helpers. Do not use imports, dependencies, filesystem access, network access, or code evaluation. Do not return prose or Markdown fences.\n\nSignature:\nassembleTurn(turnId: string, events: Event[]): Turn\n\nInput types:\ntype Event = { turnId: string; kind: string; [key: string]: unknown };\ntype Tool = { id: string; title: string; status: \"pending\" | \"running\" | \"completed\" | \"failed\"; output: string };\ntype Turn = { text: string; tools: Tool[]; stopReason: string | null };\n\nEvents are in arrival order. Every event has a string turnId and kind. Known event kinds have the fields described below with the stated types. Unknown kinds may have other fields. Only events whose turnId exactly equals the argument affect the result. Start with empty text, an empty tools array, and stopReason null. Process relevant events in order. Do not sort by ids or statuses. Text, tool ids, titles, and outputs can contain any strings, including empty strings or names of JavaScript object properties. Preserve their contents exactly.\n\nA \"message\" event has text: string and optional mode: \"append\" | \"replace\". Append its text to the accumulated message by default. In replace mode replace the entire accumulated message, including when the text is empty. A \"thought\" event has no effect. Every other unknown kind has no effect.\n\nA \"tool\" event has id: string and optional title: string, status: \"pending\" | \"running\" | \"completed\" | \"failed\", output: string | null, and outputMode: \"append\" | \"replace\". The first event for each tool id creates a tool with title \"\", status \"pending\", and output \"\" before applying the event's fields. Later events for that exact id update the same tool. Output tools in order of first relevant appearance. An omitted title or status preserves its previous value. A supplied empty title clears the title. A supplied status replaces the previous status, even if it goes from a terminal status to a nonterminal status. No status locks a tool. An omitted output preserves the prior output, regardless of outputMode. A null output clears output, regardless of outputMode. For a string output, append by default or replace if outputMode is \"replace\". An empty string follows the same append/replace rule. Never add event-only fields to returned tools.\n\nA \"done\" event has stopReason: string. The first relevant done event sets stopReason and ends processing. Ignore all subsequent events, including tool updates, messages, and later done events. A done event for another turn does not stop processing. Without a relevant done event, stopReason stays null. Return exactly the Turn fields and exactly the Tool fields above.\n\nBuggy starting implementation:\nexport function assembleTurn(turnId: string, events: any[]) {\n  let text = \"\";\n  let stopReason = null;\n  const tools: Record<string, any> = {};\n  for (const event of events) {\n    if (event.kind === \"message\") text += event.text;\n    if (event.kind === \"tool\") {\n      tools[event.id] = {\n        id: event.id,\n        title: event.title || \"\",\n        status: event.status || \"pending\",\n        output: event.output || \"\",\n      };\n    }\n    if (event.kind === \"done\") stopReason = event.stopReason;\n  }\n  return { text, tools: Object.values(tools), stopReason };\n}",
+  "stage": "01-astra-draft",
+  "member": "codex",
+  "result": {
+    "text": "type Event = {\n  turnId: string;\n  kind: string;\n  [key: string]: unknown;\n};\n\ntype Tool = {\n  id: string;\n  title: string;\n  status: \"pending\" | \"running\" | \"completed\" | \"failed\";\n  output: string;\n};\n\ntype Turn = {\n  text: string;\n  tools: Tool[];\n  stopReason: string | null;\n};\n\nexport function assembleTurn(turnId: string, events: Event[]): Turn {\n  let text = \"\";\n  let stopReason: string | null = null;\n  const tools: Tool[] = [];\n  const toolsById = new Map<string, Tool>();\n\n  for (const event of events) {\n    if (event.turnId !== turnId) continue;\n\n    if (event.kind === \"done\") {\n      stopReason = event.stopReason as string;\n      break;\n    }\n\n    if (event.kind === \"message\") {\n      const message = event.text as string;\n      text = event.mode === \"replace\" ? message : text + message;\n      continue;\n    }\n\n    if (event.kind !== \"tool\") continue;\n\n    const id = event.id as string;\n    let tool = toolsById.get(id);\n\n    if (tool === undefined) {\n      tool = { id, title: \"\", status: \"pending\", output: \"\" };\n      toolsById.set(id, tool);\n      tools.push(tool);\n    }\n\n    if (event.title !== undefined) {\n      tool.title = event.title as string;\n    }\n\n    if (event.status !== undefined) {\n      tool.status = event.status as Tool[\"status\"];\n    }\n\n    if (event.output === null) {\n      tool.output = \"\";\n    } else if (typeof event.output === \"string\") {\n      tool.output =\n        event.outputMode === \"replace\"\n          ? event.output\n          : tool.output + event.output;\n    }\n  }\n\n  return { text, tools, stopReason };\n}",
+    "stopReason": "end_turn",
+    "log": [
+      "reasoning effort selected: medium"
+    ],
+    "ms": 20272,
+    "usage": {
+      "totalTokens": 24436,
+      "inputTokens": 11611,
+      "cachedReadTokens": 12288,
+      "outputTokens": 537,
+      "thoughtTokens": 128
+    }
+  },
+  "score": {
+    "passed": 15,
+    "total": 15,
+    "checks": [
+      {
+        "name": "empty stream preserves initial state",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "message append preserves whitespace and empty chunks",
+        "passed": true,
+        "actual": {
+          "text": " A\nB\t",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": " A\nB\t",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "message replacement can clear accumulated text",
+        "passed": true,
+        "actual": {
+          "text": "final",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "final",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "another turn cannot append text or terminate this turn",
+        "passed": true,
+        "actual": {
+          "text": "ours",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "ours",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "thoughts and unknown event kinds do not become visible text or tools",
+        "passed": true,
+        "actual": {
+          "text": "visible",
+          "tools": [],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "visible",
+          "tools": [],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "first partial tool event uses defaults",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "pending",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "pending",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "partial updates preserve other fields and append output",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Read",
+              "status": "completed",
+              "output": "line 1\nline 2"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Read",
+              "status": "completed",
+              "output": "line 1\nline 2"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "explicit empty title and replacement output clear their fields",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "running",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "running",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "null output clears before later append",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "pending",
+              "output": "new"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "pending",
+              "output": "new"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "numeric-looking tool ids retain first appearance order",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "10",
+              "title": "First",
+              "status": "pending",
+              "output": "ac"
+            },
+            {
+              "id": "2",
+              "title": "Second",
+              "status": "pending",
+              "output": "b"
+            },
+            {
+              "id": "1",
+              "title": "Third",
+              "status": "pending",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "10",
+              "title": "First",
+              "status": "pending",
+              "output": "ac"
+            },
+            {
+              "id": "2",
+              "title": "Second",
+              "status": "pending",
+              "output": "b"
+            },
+            {
+              "id": "1",
+              "title": "Third",
+              "status": "pending",
+              "output": ""
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "first relevant completion freezes all accumulated state",
+        "passed": true,
+        "actual": {
+          "text": "done",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "completed",
+              "output": "ok"
+            }
+          ],
+          "stopReason": ""
+        },
+        "expected": {
+          "text": "done",
+          "tools": [
+            {
+              "id": "a",
+              "title": "",
+              "status": "completed",
+              "output": "ok"
+            }
+          ],
+          "stopReason": ""
+        }
+      },
+      {
+        "name": "foreign tool updates cannot create or overwrite this turn's tools",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Ours",
+              "status": "pending",
+              "output": "ours"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Ours",
+              "status": "pending",
+              "output": "ours"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "object-property names and empty ids remain independent tool ids",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "__proto__",
+              "title": "",
+              "status": "pending",
+              "output": "ad"
+            },
+            {
+              "id": "constructor",
+              "title": "",
+              "status": "pending",
+              "output": "b"
+            },
+            {
+              "id": "",
+              "title": "",
+              "status": "pending",
+              "output": "c"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "__proto__",
+              "title": "",
+              "status": "pending",
+              "output": "ad"
+            },
+            {
+              "id": "constructor",
+              "title": "",
+              "status": "pending",
+              "output": "b"
+            },
+            {
+              "id": "",
+              "title": "",
+              "status": "pending",
+              "output": "c"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "output mode alone preserves output and status is allowed to reopen",
+        "passed": true,
+        "actual": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Run",
+              "status": "running",
+              "output": "diagnostic"
+            }
+          ],
+          "stopReason": null
+        },
+        "expected": {
+          "text": "",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Run",
+              "status": "running",
+              "output": "diagnostic"
+            }
+          ],
+          "stopReason": null
+        }
+      },
+      {
+        "name": "nonempty output replacement and normal completion preserve visible message",
+        "passed": true,
+        "actual": {
+          "text": "Finished.",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Run",
+              "status": "completed",
+              "output": "result"
+            }
+          ],
+          "stopReason": "end_turn"
+        },
+        "expected": {
+          "text": "Finished.",
+          "tools": [
+            {
+              "id": "a",
+              "title": "Run",
+              "status": "completed",
+              "output": "result"
+            }
+          ],
+          "stopReason": "end_turn"
+        }
+      }
+    ]
+  }
+}
