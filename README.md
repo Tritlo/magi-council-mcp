@@ -1,13 +1,12 @@
 # magi-council-mcp
 
 A small MCP server that lets a coding agent **consult other frontier models
-mid-task** — **Codex (GPT-5.x)**, **GitHub Copilot**, **Grok (xAI)**, and
+mid-task** — **Codex**, **GitHub Copilot**, **Grok (xAI)**, and
 **Claude (Anthropic)** — for a second opinion, plan review, diff review,
-brainstorming, exploration, media generation, and a **Magi council**. A lightweight take on model
-*fusion*: the host proposes, the others review, the host reconciles. (See
-OpenRouter's
-[Fusion beats Frontier](https://openrouter.ai/blog/announcements/fusion-beats-frontier/) —
-the synthesis step itself is where the gains come from.)
+brainstorming, exploration, media generation, and a **Magi council**. The council
+uses independent drafts, explicit self-critique, and revision before aggregation.
+This protocol follows the approach in
+[Refining Over Resampling: Test-Time Self-Correction for LLM Reasoning](https://arxiv.org/html/2608.05643v1).
 
 The default council roster is **Claude, Codex, and Grok**. **Copilot is available
 but opt-in**: add `copilot` to `MAGI_COUNCIL_MEMBERS` to enable it. The server is
@@ -24,7 +23,8 @@ non-host member's ACP server —
 [`@github/copilot`](https://www.npmjs.com/package/@github/copilot) in native
 `--acp` mode, `grok agent stdio`, and
 [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) —
-keeping one persistent session per member per workspace.
+Direct advisor tools keep one persistent session per member per workspace.
+Each council stage uses isolated sessions with explicit previous artifacts.
 
 ## Tools
 
@@ -32,13 +32,13 @@ keeping one persistent session per member per workspace.
 
 | Tool | Use it to… |
 |------|-----------|
-| `consult` | convene the council on a question — each advisor gives an independent view, you synthesize. **Deliberation is host-mediated**: it returns one round; weigh in (`my_take`) and **call again** to run the next round, iterating until you judge agreement. `members` picks who sits on the council (a subset); `fresh` runs each advisor on a throwaway session (no cross-call context) |
+| `consult` | run one refinement stage: `draft`, `critique`, or `revise`. Pass each advisor's own artifacts through `previous`. The host follows the same stages and aggregates the revised candidates. `members` selects a subset of active advisors. |
 
 **Ask one advisor directly** (a member's pair appears only when it is in the roster and is not the host):
 
 | Tool | Use it to… |
 |------|-----------|
-| `ask_codex` / `codex_reply` | a second opinion from Codex (GPT-5), and follow-ups |
+| `ask_codex` / `codex_reply` | a second opinion from Codex, and follow-ups |
 | `ask_copilot` / `copilot_reply` | a second opinion from GitHub Copilot (when enabled in the roster) |
 | `ask_claude` / `claude_reply` | a second opinion from Claude (generalist coder) |
 | `ask_grok` / `grok_reply` | a second opinion from Grok — live web/X search, current events |
@@ -109,30 +109,65 @@ keep it to ~3 turns.
 
 ### The Magi council (`consult`)
 
-`consult` convenes your advisors — the council members other than you — on one
-question. **Every active advisor weighs in** with an *independent* view. Grok
-uses its live web/X search when it helps, and you synthesize.
+**Independent refinement is the default council protocol.** We adopt the paper's
+breadth-and-depth principle: preserve separate candidates, then critique and repair
+each candidate before aggregation. This gives each stage an explicit purpose and
+keeps early agreement from replacing independent evaluation.
 
-**Deliberation is host-mediated** (ADR 0016): `consult` runs **one round** and returns,
-telling you to form your own position and **call `consult` again** — with `my_take` set
-to your evolving position — to run the next round. The advisors keep their context
-(persistent sessions) and respond to *you*; you iterate until you judge agreement is
-reached, then act on it. So **you are a real participant**, not just the reader of an
-autonomous debate: cross-pollination flows through you (you integrate the voices and
-feed them back), round by round, for as long as it's worth it. There's no internal
-multi-round mode — the host drives the rounds.
+The host drives one stage per tool call. Finish the host's own draft, self-critique,
+and revision before the first call. Keep that candidate unchanged until aggregation,
+so advisor drafts cannot influence the host's independent refinement:
 
-Pass **`members`** to choose who sits on the council for one call (default: every
-active advisor — the members other than you). Name a subset to convene just those (the
-host is never a member — it participates by driving the rounds, not by being spawned;
-ADR 0015).
+1. **Draft.** Call `consult` with `phase: "draft"` (the default). Supply the question
+   and neutral task context. Each advisor produces an independent candidate.
+2. **Critique.** Call with `phase: "critique"`. Put each advisor's draft in
+   `previous[member].candidate`. Each advisor checks only its own candidate for
+   concrete errors, unsupported assumptions, and counterexamples.
+3. **Revise.** Call with `phase: "revise"`. Keep each candidate and add its own
+   critique in `previous[member].critique`. Each advisor repairs supported errors
+   and preserves valid parts. An unchanged answer is allowed.
+4. **Aggregate.** Combine the revised advisor candidates with the host's revised
+   candidate. Use repository evidence and task checks. Use plurality only for
+   comparable normalized answers. Resolve ties with evidence and report unresolved
+   differences. Agreement alone does not establish correctness.
 
-Pass **`fresh`** to run each advisor on a **throwaway session** — independent of any
-prior conversation and discarded when the consult ends — so the council's votes
-don't carry or leave cross-call context. It's slower (each advisor spawns fresh) and
-forfeits the accumulated "collaborator" memory, so it's opt-in; the default reuses
-the persistent sessions. (`fresh` is the lightweight end of the council-memory
-trade-off; the durable other end is the proposed `MAGI.md`, ADR 0011.)
+Each stage starts a fresh session per advisor and disposes it afterward. The server
+passes only that advisor's `previous` entry. Repeat the question, neutral context,
+member selection, models, and efforts across stages. Do not put host or peer
+positions in shared context. Missing required artifacts fail before any advisor is
+called. Exclude failed advisors from subsequent stages; errors are not candidates.
+
+For example, one advisor's revision call has this shape:
+
+```json
+{
+  "question": "The original task",
+  "phase": "revise",
+  "members": ["claude"],
+  "previous": {
+    "claude": {
+      "candidate": "Claude's draft",
+      "critique": "Claude's critique of that draft"
+    }
+  }
+}
+```
+
+One refinement cycle takes three calls. Choose a budget before starting. More
+depth means another critique/revise pair on each participant's latest candidate.
+The host remains a participant and controls the budget. It is never spawned as
+its own advisor. `my_take` and `fresh` are removed from `consult`; isolation is
+required for every stage. Direct advisor conversations retain their existing
+persistent sessions.
+
+This is an adaptation of the paper, not an exact reproduction. We use different
+models as participants and task-specific host aggregation instead of eight
+same-model rollouts and unconditional answer voting. The paper evaluates math
+reasoning. Our [local spike](research/refinement-spike/RESULTS.md) found no accuracy
+difference because both protocols solved every task in their initial drafts. We
+adopt the explicit refinement structure without claiming a measured coding gain.
+This replaces the agreement-driven stopping rule in ADR 0016 while retaining host
+participation.
 
 ### Model and effort selection
 
@@ -142,8 +177,8 @@ row, not the display label. For example, Claude may report model values like:
 
 ```text
 default
-opus[1m]
-claude-fable-5[1m]
+opus
+fable
 sonnet
 haiku
 ```
@@ -154,7 +189,7 @@ reasoning efforts for a council fan-out:
 ```json
 {
   "members": ["claude"],
-  "models": { "claude": "opus[1m]" },
+  "models": { "claude": "opus" },
   "efforts": { "claude": "high" },
   "question": "Review this risky design decision."
 }
@@ -170,18 +205,19 @@ Single-advisor tools take **`model`** and **`effort`** instead:
 }
 ```
 
-Model and effort selection are ACP session-level. On persistent sessions they
-remain until changed or `reset`; with `fresh`, they apply only to that throwaway
-session. If a member does not report the requested selector, or you pass an
+Model and effort selection are ACP session-level. On direct advisor sessions they
+remain until changed or `reset`. For `consult`, they apply only to the current
+stage; repeat them in the next stage. If a member does not report the requested selector, or you pass an
 unavailable value, the tool returns a readable member-specific error instead of
 guessing a fallback. Use Opus/high effort for high-leverage reviews; keep
-Fable/Sonnet/Haiku and lower effort for routine checks so the council does not
+Sonnet/Haiku and lower effort for routine checks so the council does not
 silently eat the expensive budget.
 
 It runs members **concurrently** and **atomically** — every advisor's turn fans out
 at once (each on its own session), rendered back in member order, as a single tool
-call with no permit round-trips. A council turn is **read-only**: members may read any files and
-search/fetch to ground their answers, but writes and command execution are
+call with no permit round-trips. A council turn is **read-only**: members may read files and
+search/fetch to ground their answers. Codex uses native read-only shell inspection
+in its restricted mode. Write and command approval requests are
 auto-denied (and surfaced as a `⚠️ blocked in council mode: …` line, so a
 grounded-looking answer can't hide a quietly-denied action). Each member is
 handled independently, so if one is unavailable you still get the others.
@@ -189,9 +225,10 @@ Grok's web/X search is not a guardian action, so it works in council mode.
 
 The structured tools (`review_plan`/`review_diff`/`brainstorm`/`explore`) also take
 **`member: "council"`** to fan out one round to every advisor (independent panel,
-no multi-round deliberation). Since council mode is read-only, a `member:"council"`
-`review_diff` can't run `git diff` (a command) — use single-advisor `review_diff`
-(which can, via a permit) for that. For **image/video generation**, use
+no multi-round deliberation). `review_diff` with `member: "council"` requires an
+explicit `diff` so all advisors receive the same changes. A single-advisor review
+can inspect `git diff` through its native restricted tools or a permit.
+For **image/video generation**, use
 `grok_generate`. It writes a file, which read-only council mode would block.
 
 ### Permission modes (advisors restricted, delegates native)
@@ -207,10 +244,9 @@ sessions use the member's native mode** — the agent's default, or a per-call
 `mode` (sticky for that delegate's session). Whatever a mode still escalates
 (network, out-of-workspace paths) pauses for the host via `permit` — the host
 stays the guardian for risky actions. But the permit fallback only gates what an
-agent chooses to surface: codex's internal Guardian Review can self-approve
-workspace writes even in `read-only` mode, and Grok has been observed writing
-workspace files without asking. Modes steer; they are not a hard boundary —
-review a delegate's diff.
+agent chooses to surface. Codex ACP 2.1.1 restores approval requests in `read-only`
+mode. Grok has been observed writing workspace files without asking. Verify mode
+behavior when updating a harness, and review a delegate's diff.
 
 ### Permissions: the host is the guardian
 
@@ -231,10 +267,10 @@ suspends — it runs read-only, resolving permissions inline — so it never lea
 pending permit.)
 
 The server also advertises a **read-only client filesystem** (ACP
-`fs/read_text_file`), sandboxed to the workspace (or anywhere with
-`MAGI_COUNCIL_ALLOW_EXTERNAL_READS`). This gives agents a non-shell read path — the
-reason a command-based reader like Codex can read inside read-only council mode at
-all. It never advertises `writeTextFile`, so writes still go through the guardian.
+`fs/read_text_file`), scoped to the workspace (or anywhere with
+`MAGI_COUNCIL_ALLOW_EXTERNAL_READS`). This provides a read path for adapters that
+use it. Codex ACP 2.1.1 does not expose it as a tool; Codex uses native shell reads.
+The server never advertises `writeTextFile`.
 
 ### Running out of usage
 
@@ -297,14 +333,15 @@ advisor that no longer has the thread. Re-establish context (or `reset` and star
   keeps both sides in lockstep); bump the version in `src/config.ts` deliberately.
 - When Copilot is in the roster, it uses the official [`@github/copilot`](https://www.npmjs.com/package/@github/copilot)
   CLI in native ACP mode, fetched via `bunx` and pinned in `src/config.ts`.
-  Authenticate once with `bunx @github/copilot@1.0.73 login`, or set
+  Authenticate once with `bunx @github/copilot@1.0.91 login`, or set
   `COPILOT_GITHUB_TOKEN`.
 - Grok uses the [Grok CLI](https://x.ai) on your `PATH`. Run `grok login` and
   confirm that the account has available usage.
 - For Claude's seat on the council (only when the host **isn't** Claude):
   [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp),
   fetched on demand via `bunx`, plus a working Claude login / `ANTHROPIC_API_KEY`.
-  The pinned adapter bundles Claude Code 2.1.257 and exposes Fable 5.1.
+  The pinned adapter uses Claude Agent SDK 0.3.287. Call `available_councilors`
+  to inspect the models available to the account.
   The spawned Claude process disables Claude's native advisor tool because the
   council supplies the second opinion.
   **Experimental** — disable by setting
@@ -421,9 +458,9 @@ workspace env var.
 | `MAGI_COUNCIL_WORKSPACE` | cwd | Absolute path the members are scoped to; the base for every guardian check. |
 | `MAGI_COUNCIL_MEMBERS` | `codex,grok,claude` | Comma-separated council roster. Member ids: `claude`, `codex`, `copilot`, and `grok`. Input order does not change canonical voice order. |
 | `MAGI_COUNCIL_EXCLUDE` | (auto) | Force the host member to exclude (`claude`\|`codex`\|`copilot`\|`grok`). Wins over clientInfo detection; recommended for non-Claude hosts. |
-| `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` | `bunx @agentclientprotocol/claude-agent-acp@0.73.0` | How to launch Claude's ACP server (used only when Claude isn't the host). |
-| `MAGI_COUNCIL_CODEX_ACP_COMMAND` | `bunx @agentclientprotocol/codex-acp@1.1.0` | How to launch Codex's ACP server. |
-| `MAGI_COUNCIL_COPILOT_ACP_COMMAND` | `bunx @github/copilot@1.0.73 --acp` | How to launch GitHub Copilot CLI's native ACP server. |
+| `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` | `bunx @agentclientprotocol/claude-agent-acp@0.86.0` | How to launch Claude's ACP server (used only when Claude isn't the host). |
+| `MAGI_COUNCIL_CODEX_ACP_COMMAND` | `bunx @agentclientprotocol/codex-acp@2.1.1` | How to launch Codex's ACP server. |
+| `MAGI_COUNCIL_COPILOT_ACP_COMMAND` | `bunx @github/copilot@1.0.91 --acp` | How to launch GitHub Copilot CLI's native ACP server. |
 | `MAGI_COUNCIL_GROK_ACP_COMMAND` | `grok agent stdio` | How to launch Grok's ACP server. |
 | `MAGI_COUNCIL_ALLOW_EXTERNAL_READS` | off | Let a member read outside the workspace + use network fetch. |
 | `MAGI_COUNCIL_ALLOW_WRITES` | off | Let a member edit/delete/move files inside the workspace. |

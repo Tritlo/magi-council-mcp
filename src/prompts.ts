@@ -1,7 +1,7 @@
 /**
  * Prompt builders for each council tool.
  *
- * Members (GPT-5/Codex, GitHub Copilot, Grok, and Claude) respond best to compact, block-structured
+ * Members (Codex, GitHub Copilot, Grok, and Claude) respond best to compact, block-structured
  * prompts with stable XML tags: one task, an explicit output contract, and only
  * the grounding/verification blocks the task needs. These templates follow the
  * Codex prompting recipes and the GPT-5.2 prompting guide (default to tight
@@ -17,7 +17,7 @@ function preamble(name: string, host: string): string {
 }
 
 /** How Codex names itself in prompts. */
-const CODEX = "GPT-5/Codex";
+const CODEX = "Codex";
 
 const GROUNDING = `<grounding_rules>
 Ground every claim in the repository or your own tool output. Do not present inferences as facts; label hypotheses as such. Prefer "based on <file>" over generic assertions.
@@ -47,7 +47,7 @@ function withContext(context: string | undefined): string {
 
 /** Shared block: a council turn is read-only deliberation, not a side-effect run. */
 const DELIBERATION_ONLY = `<deliberation_only>
-This is a READ-ONLY council deliberation. You MAY read any files and search/fetch to ground your view — read whatever you need directly (don't shell out for it). You may NOT modify files or run shell commands: writes and command execution are auto-declined here. Built-in web search is fine and encouraged where it helps. If something genuinely can't be inspected, say so briefly rather than trying to run a command.
+This is a READ-ONLY council deliberation. You MAY read files and search/fetch to ground your view. Use file-reading tools when available; otherwise use native read-only shell inspection within your restricted mode. You may NOT modify files, run commands that change state, or request broader permissions. Write and command approval requests are declined here. Built-in web search is allowed. If inspection is blocked, state what you could not inspect.
 </deliberation_only>`;
 
 /** A focused question / second opinion on a specific decision, from Codex (the
@@ -231,30 +231,43 @@ This is the Magi council: ${host} (the lead — convened this and will synthesiz
 </magi_council>`;
 }
 
-/**
- * One advisor's turn in the Magi council. All active advisors have equal roles
- * and answer the same question independently; `grokStrengths` adds Grok's
- * live-search note when the advisor is Grok.
- */
+/** One stage of independent candidate refinement. */
+export type CouncilPhase = "draft" | "critique" | "revise";
+
+/** The previous artifacts for one advisor. Never share these with another advisor. */
+export interface CouncilCandidate {
+  candidate: string;
+  critique?: string;
+}
+
+/** Build one refinement stage with only this advisor's previous artifacts. */
 export function magiAdvisorPrompt(opts: {
   advisor: string;
   host: string;
   question: string;
   context?: string;
-  hostTake?: string;
+  phase: CouncilPhase;
+  previous?: CouncilCandidate;
   fellowAdvisors?: string[];
   grokStrengths?: boolean;
 }): string {
+  const tasks: Record<CouncilPhase, string> = {
+    draft: "Produce an independent candidate solution to the question. State the proposal and the evidence or assumptions it depends on. Do not try to predict another participant's answer.",
+    critique: "Critique your own candidate below against the question and evidence. Identify concrete errors, unsupported assumptions, and counterexamples. State which parts are valid and must be preserved. If you find no error, say so. Do not rewrite the candidate yet.",
+    revise: "Revise your own candidate using its critique below. Check each criticism against the evidence before accepting it. Repair supported errors and preserve valid parts. Return the complete revised candidate, a short account of changes, and any unresolved uncertainty. Do not invent changes when the candidate is already sound.",
+  };
   return assemble(
     opts.advisor,
     opts.host,
     magiFrame(opts.host, opts.fellowAdvisors),
     `<question>\n${opts.question.trim()}\n</question>`,
     withContext(opts.context),
-    opts.hostTake && opts.hostTake.trim().length > 0 ? `<host_position>\n${opts.hostTake.trim()}\n</host_position>` : "",
+    `<refinement_stage phase="${opts.phase}">\n${tasks[opts.phase]}\nWork independently. The host aggregates candidates only after refinement. Agreement is not evidence of correctness.\n</refinement_stage>`,
+    opts.phase !== "draft" && opts.previous ? `<candidate>\n${opts.previous.candidate}\n</candidate>` : "",
+    opts.phase === "revise" && opts.previous?.critique ? `<critique>\n${opts.previous.critique}\n</critique>` : "",
     opts.grokStrengths ? GROK_STRENGTHS_COUNCIL : "",
     DELIBERATION_ONLY,
-    `<compact_output_contract>\nYour position in ≤4 sentences, then up to ~4 bullets of key reasoning, risks, or where you'd push back on the host. No preamble.\n</compact_output_contract>`,
+    `<compact_output_contract>\nReturn only the requested stage. Be concise, but include enough detail for the next stage to use your result without this conversation. No preamble.\n</compact_output_contract>`,
     GROUNDING,
   );
 }

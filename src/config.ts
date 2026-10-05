@@ -20,7 +20,7 @@ export interface MemberSpec {
   id: MemberId;
   /** Display name used in tool output, status, logs, and error text. */
   name: string;
-  /** How the member names itself inside prompts (e.g. "GPT-5/Codex"). */
+  /** How the member names itself inside prompts (e.g. "Codex"). */
   promptName: string;
   /** Argv used to spawn this member's ACP server. */
   acpCommand: string[];
@@ -42,7 +42,7 @@ export interface MemberSpec {
 export interface Config {
   /** Claude (Anthropic) — a council member when some *other* agent is the host. */
   claude: MemberSpec;
-  /** Codex (GPT-5.x) — a council member. */
+  /** Codex — a council member. */
   codex: MemberSpec;
   /** GitHub Copilot — a council member. */
   copilot: MemberSpec;
@@ -148,15 +148,15 @@ export function loadConfig(): Config {
       "Claude",
       "Claude",
       "MAGI_COUNCIL_CLAUDE_ACP_COMMAND",
-      ["bunx", "@agentclientprotocol/claude-agent-acp@0.73.0"],
+      ["bunx", "@agentclientprotocol/claude-agent-acp@0.86.0"],
       "ensure Claude is authenticated (claude-agent-acp uses your Claude login or ANTHROPIC_API_KEY)",
     ),
     codex: memberSpec(
       "codex",
       "Codex",
-      "GPT-5/Codex",
+      "Codex",
       "MAGI_COUNCIL_CODEX_ACP_COMMAND",
-      ["bunx", "@agentclientprotocol/codex-acp@1.1.0"],
+      ["bunx", "@agentclientprotocol/codex-acp@2.1.1"],
       "run `/codex:setup` or `codex login`",
     ),
     copilot: memberSpec(
@@ -164,8 +164,8 @@ export function loadConfig(): Config {
       "Copilot",
       "GitHub Copilot",
       "MAGI_COUNCIL_COPILOT_ACP_COMMAND",
-      ["bunx", "@github/copilot@1.0.73", "--acp"],
-      "run `bunx @github/copilot@1.0.73 login` or set COPILOT_GITHUB_TOKEN",
+      ["bunx", "@github/copilot@1.0.91", "--acp"],
+      "run `bunx @github/copilot@1.0.91 login` or set COPILOT_GITHUB_TOKEN",
     ),
     grok: memberSpec(
       "grok",

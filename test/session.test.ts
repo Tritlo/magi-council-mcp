@@ -102,11 +102,20 @@ test("invalid effort errors with available choices", async () => {
   expect(message).toContain("Available reasoning efforts: low, medium, high");
 });
 
-test("permission suspend → permit allow resumes the same turn", async () => {
-  const s = makeSession("permission");
+test.each(["permission", "permission-profile", "permission-command-profile"])("permission suspend → permit allow resumes the same turn (%s)", async (scenario) => {
+  const s = makeSession(scenario);
   const o1 = await s.ask("write FOO");
   expect(o1.type).toBe("permission");
-  if (o1.type === "permission") expect(o1.description).toContain("write FOO");
+  if (o1.type === "permission") {
+    expect(o1.description).toContain(`${process.cwd()}/FOO`);
+    if (scenario !== "permission-profile") expect(o1.description).toContain("write FOO");
+    if (scenario !== "permission") {
+      expect(o1.description).toContain('"network":{"enabled":true}');
+      expect(o1.description).toContain('"fileSystem":{"write":');
+      expect(o1.description).toContain("Enable network access");
+      expect(o1.description).not.toContain("DO-NOT-DISPLAY");
+    }
+  }
   expect(s.isAwaitingPermission()).toBe(true);
 
   const o2 = await s.permit(true);

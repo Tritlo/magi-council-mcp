@@ -81,5 +81,18 @@ export function describePermission(toolCall: ToolCallUpdate): string {
     commandStr ??
     (typeof toolCall.title === "string" ? toolCall.title : undefined) ??
     (locations.length > 0 ? locations.join(", ") : undefined);
-  return detail ? `${kind}: ${detail}` : String(kind);
+  const scope: string[] = [];
+  if (raw && typeof raw === "object") {
+    for (const key of ["permissions", "additionalPermissions"] as const) {
+      if (key in raw) {
+        const profile = (raw as Record<string, unknown>)[key];
+        if (profile && typeof profile === "object") scope.push(`${key}: ${JSON.stringify(profile)}`);
+      }
+    }
+  }
+  if (locations.length > 0) scope.push(`paths: ${locations.join(", ")}`);
+  for (const content of toolCall.content ?? []) {
+    if (content.type === "content" && content.content.type === "text") scope.push(content.content.text);
+  }
+  return [detail ? `${kind}: ${detail}` : String(kind), ...scope].join("\n");
 }

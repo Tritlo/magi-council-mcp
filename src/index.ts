@@ -35,6 +35,8 @@ import {
   replyPrompt,
   reviewDiffPrompt,
   reviewPlanPrompt,
+  type CouncilCandidate,
+  type CouncilPhase,
 } from "./prompts.ts";
 
 // ACP agents can emit extension notifications and stray responses the SDK can't
@@ -78,7 +80,7 @@ const sessions: Record<MemberId, AcpSession> = {
 };
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
-type ToolResult = { content: Array<{ type: "text"; text: string }> };
+type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 // --- host resolution ------------------------------------------------------
 // The agent driving the MCP (the client) is the council host and is excluded
@@ -347,7 +349,7 @@ memberTools.codex.push(
     "ask_codex",
     {
       description:
-        "Ask Codex (GPT-5) directly for an independent second opinion on a specific question or decision. Codex debates back; continue with `codex_reply` (cap ~3 turns). For the whole council use `consult`.",
+        "Ask Codex directly for an independent second opinion on a specific question or decision. Codex debates back; continue with `codex_reply` (cap ~3 turns). For the whole council use `consult`.",
       inputSchema: {
         question: z.string().describe("The specific question or decision to put to Codex."),
         context: z
@@ -662,7 +664,7 @@ memberTools.codex.push(
     "delegate_codex",
     {
       description:
-        "Hand Codex (GPT-5) an implementation task as your delegate coder: it edits files and runs commands in this workspace on its own named session, then reports back (outcome, files changed, verification, blockers). Run several delegates concurrently by issuing parallel tool calls with different `name`s; re-call with the same `name` to steer or follow up. Permissions follow Codex's native ACP mode (default `agent` — sandboxed writes/commands with its internal Guardian review; set `mode` to change, see available_councilors); anything it still escalates (network, outside-workspace paths) pauses 🔐 for your judgement via `permit` — you stay the guardian for risky actions.",
+        "Hand Codex an implementation task as your delegate coder: it edits files and runs commands in this workspace on its own named session, then reports back (outcome, files changed, verification, blockers). Run several delegates concurrently by issuing parallel tool calls with different `name`s; re-call with the same `name` to steer or follow up. Permissions follow Codex's native ACP mode (default `agent` — sandboxed writes/commands with its internal Guardian review; set `mode` to change, see available_councilors); anything it still escalates (network, outside-workspace paths) pauses 🔐 for your judgement via `permit` — you stay the guardian for risky actions.",
       inputSchema: delegateInput,
     },
     (args, extra) => runDelegate("codex", args, extra),
@@ -864,22 +866,18 @@ server.registerTool(
   "consult",
   {
     description:
-      `Consult the Magi council — every active advisor (the council members other than you) gives an independent view in one round, and you synthesize. Deliberation is host-mediated: it returns after one round; to make the council deliberate, weigh in and **call \`consult\` again** with \`my_take\` set to your evolving position (the advisors keep their context and respond to you), iterating until you judge agreement is reached. For one specific advisor use ${askToolNames}; for a structured single-advisor pass use \`review_plan\`/\`review_diff\`/\`brainstorm\`/\`explore\` (those take \`member: "council"\` to fan out to all).`,
+      `Run one stage of independent council refinement: draft, critique, then revise. Finish your own draft, critique, and revision before the first call, so advisor drafts cannot influence your independent candidate. Keep that candidate separate until aggregation. Each advisor gets a fresh session with the shared question and only its own previous artifacts. Use neutral context; do not share host or peer positions before refinement ends. After draft, call critique with each advisor's candidate in previous. Then call revise with that candidate and its critique. Aggregate the revised candidates with your own, using evidence and task checks. Repeat critique/revise only within a chosen budget. Agreement alone is not a stopping rule. The host is excluded from the advisor roster. For targeted reviews use ${askToolNames} or review_plan/review_diff.`,
     inputSchema: {
       question: z.string().describe("The question or decision to put to the council."),
-      context: z.string().optional().describe("Optional background or constraints."),
-      my_take: z
-        .string()
+      context: z.string().optional().describe("Shared task facts and constraints. Keep host and peer proposals out of this context."),
+      phase: z.enum(["draft", "critique", "revise"]).default("draft").describe("One stage per call. Default: independent drafts. Follow with critique, then revise."),
+      previous: z
+        .record(memberSchema, z.object({
+          candidate: z.string().trim().min(1),
+          critique: z.string().trim().min(1).optional(),
+        }))
         .optional()
-        .describe(
-          "Your own current position, put before the council so the advisors engage it directly. Update this and call again to run the next round of the deliberation.",
-        ),
-      fresh: z
-        .boolean()
-        .optional()
-        .describe(
-          "Run each advisor on a throwaway session — independent of any prior conversation and discarded afterward — so the council's votes don't carry or leave cross-call context. Slower (each advisor spawns fresh). Default false (reuse the persistent collaborator sessions). Note: `fresh` makes each call independent, so it doesn't accumulate the host-mediated deliberation across calls.",
-        ),
+        .describe("Previous artifacts keyed by advisor id. Critique requires each selected advisor's candidate. Revise also requires its critique. Each advisor receives only its own entry. Omit for draft."),
       members: z
         .array(memberSchema)
         .optional()
@@ -897,8 +895,8 @@ server.registerTool(
 interface MagiArgs {
   question: string;
   context?: string;
-  my_take?: string;
-  fresh?: boolean;
+  phase?: CouncilPhase;
+  previous?: Partial<Record<MemberId, CouncilCandidate>>;
   members?: MemberId[];
   models?: ModelSelection;
   efforts?: EffortSelection;
@@ -907,7 +905,8 @@ interface MagiArgs {
 
 /** Render one council voice (answer + any blocked actions + footer). */
 function renderVoice(name: string, result: AskResult | null): string {
-  const body = result && result.text.length > 0 ? result.text : `_(${name} returned no text)_`;
+  const complete = result?.stopReason === "end_turn" && result.text.trim().length > 0;
+  const body = complete ? result.text : `_Incomplete advisor output (${result?.stopReason ?? "no result"}${result && !result.text.trim() ? "; empty response" : ""}). Do not use it as a candidate or critique in another stage._`;
   const lines = [`### ${name}`, "", body];
   const blocked = (result?.log ?? [])
     .filter((l) => l.startsWith("auto-denied:"))
@@ -917,8 +916,7 @@ function renderVoice(name: string, result: AskResult | null): string {
   return lines.join("\n");
 }
 
-/** Resolves the session a council turn runs on — the persistent one, or an
- * ephemeral one for a `fresh` consult. */
+/** Resolve a persistent advisor session or an isolated consult session. */
 type SessionFor = (id: MemberId) => AcpSession;
 const persistentSession: SessionFor = (id) => sessions[id];
 
@@ -952,7 +950,7 @@ async function councilTurn(
       ...streamHooks(notify, prefix),
     });
     const result = outcome.type === "answer" ? outcome.result : null;
-    return { name, markup: renderVoice(name, result), text: result?.text ?? "" };
+    return { name, markup: renderVoice(name, result), text: result?.stopReason === "end_turn" ? result.text : "" };
   } catch (err) {
     return {
       name,
@@ -1019,17 +1017,10 @@ async function councilFanOut(
   return { content: [{ type: "text", text: [...sections, footer].join("\n\n---\n\n") }] };
 }
 
-/**
- * Run one round of the Magi council: every selected advisor answers the question
- * independently (concurrently), and the result tells the host to weigh in and call
- * again to deliberate. The host *is* the deliberation loop — there is no autonomous
- * multi-round mode; the host drives the rounds by re-calling with an updated
- * `my_take`. With `fresh`, each advisor runs on a throwaway session (so a call
- * doesn't carry or leave cross-call context — and so doesn't accumulate the loop).
- */
+/** Run one isolated refinement stage. The host carries each advisor's artifacts. */
 async function runMagi(args: MagiArgs, extra: Extra): Promise<ToolResult> {
-  const { question, context, my_take, time } = args;
-  const fresh = args.fresh ?? false;
+  const { question, context, previous, time } = args;
+  const phase = args.phase ?? "draft";
   const timeoutMs = time !== undefined ? time * 1000 : undefined;
   const host = hostName();
 
@@ -1044,21 +1035,35 @@ async function runMagi(args: MagiArgs, extra: Extra): Promise<ToolResult> {
     return { content: [{ type: "text", text: "No active council members in your selection." }] };
   }
 
-  // For `fresh`, give each advisor a one-shot session, disposed when this call
-  // ends — never the persistent one.
+  if (phase === "draft" && previous && Object.keys(previous).length > 0) {
+    return { isError: true, content: [{ type: "text", text: "Draft starts independently. Omit previous artifacts." }] };
+  }
+  if (phase !== "draft") {
+    const missing = active.filter((id) => !previous?.[id]?.candidate.trim() || (phase === "revise" && !previous[id]?.critique?.trim()));
+    if (missing.length > 0) {
+      return { isError: true, content: [{ type: "text", text: `${phase} requires ${phase === "revise" ? "a candidate and critique" : "a candidate"} in previous for: ${missing.join(", ")}. No advisors were called.` }] };
+    }
+  }
+
+  const next: Record<CouncilPhase, string> = {
+    draft: "Keep your independently refined candidate separate from these drafts. Call consult with phase=critique and each advisor's draft in previous[id].candidate. Keep the same question, neutral context, members, models, and efforts. Do not aggregate yet.",
+    critique: "Keep your independently refined candidate unchanged. Call consult with phase=revise, preserving each advisor's candidate and adding only that advisor's critique to its previous entry. Do not aggregate yet.",
+    revise: "Aggregate these revised candidates with your own revised candidate. Prefer repository evidence, tests, and counterexamples. Use plurality only for comparable normalized answers; resolve ties with evidence and report unresolved differences. Further depth means another critique/revise pair on each advisor's latest candidate, within your chosen budget. Agreement alone is not proof of correctness.",
+  };
   const ephemeral: Partial<Record<MemberId, AcpSession>> = {};
-  const getSession: SessionFor = fresh ? (id) => (ephemeral[id] ??= advisorSession(id)) : persistentSession;
+  const getSession: SessionFor = (id) => (ephemeral[id] ??= advisorSession(id));
 
   try {
     return await councilFanOut(
-      "consult",
+      `consult:${phase}`,
       (id) =>
         magiAdvisorPrompt({
           advisor: specs[id].promptName,
           host,
           question,
           context,
-          hostTake: my_take,
+          phase,
+          previous: previous?.[id],
           fellowAdvisors: active.filter((x) => x !== id).map((x) => specs[x].name),
           grokStrengths: id === "grok",
         }),
@@ -1066,7 +1071,7 @@ async function runMagi(args: MagiArgs, extra: Extra): Promise<ToolResult> {
       timeoutMs,
       getSession,
       active,
-      `_You (${host}) are the lead **and a participant** in this deliberation. Read these views and form your own position. **Unless you and the council have reached agreement, call \`consult\` again** with \`my_take\` set to your current position (and any new framing in \`context\`) to run the next round — the advisors keep their context and will respond to you. Iterate until you judge agreement is reached, then act on it. (Or ask one directly with ${askToolNames}.)_`,
+      `_You (${host}) are the lead and a participant. Carry only complete artifacts to the next stage. If none remain, stop and report the failures. ${next[phase]}_`,
       args.models,
       args.efforts,
     );

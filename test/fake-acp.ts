@@ -23,6 +23,7 @@ const scenarioFlag = process.argv.indexOf("--scenario");
 const scenario = scenarioFlag >= 0 ? (process.argv[scenarioFlag + 1] ?? "answer") : "answer";
 /** When set, append a byte per newSession so a test can count session creations. */
 const sessionsFile = process.env.FAKE_ACP_SESSIONS_FILE;
+const promptsFile = process.env.FAKE_ACP_PROMPTS_FILE;
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -97,6 +98,7 @@ new AgentSideConnection((conn): Agent => {
       cancelled = true;
     },
     async prompt(params) {
+      if (promptsFile) appendFileSync(promptsFile, JSON.stringify({ pid: process.pid, ...params }) + "\n");
       cancelled = false;
       const sessionId = params.sessionId;
       const say = (text: string): Promise<void> =>
@@ -121,13 +123,26 @@ new AgentSideConnection((conn): Agent => {
       const writeCall = { toolCallId: "w1", kind: "edit", title: "write FOO", locations: [{ path: `${process.cwd()}/FOO` }] } as const;
 
       switch (scenario) {
-        case "answer": {
+        case "answer":
+        case "truncated": {
           await think("pondering");
           await say("Hello from fake [ANSWER]");
-          return { stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 32, totalTokens: 42 } };
+          return { stopReason: scenario === "truncated" ? "max_tokens" : "end_turn", usage: { inputTokens: 10, outputTokens: 32, totalTokens: 42 } };
         }
-        case "permission": {
-          const res = await ask(writeCall);
+        case "permission":
+        case "permission-profile":
+        case "permission-command-profile": {
+          const permissions = { network: { enabled: true }, fileSystem: { write: [`${process.cwd()}/FOO`] } };
+          const res = await ask(scenario === "permission" ? writeCall : {
+            toolCallId: "p1",
+            kind: scenario === "permission-profile" ? "other" : "execute",
+            title: "Additional sandbox permissions",
+            locations: writeCall.locations,
+            rawInput: scenario === "permission-profile"
+              ? { permissions, unrelated: "DO-NOT-DISPLAY" }
+              : { command: "write FOO", additionalPermissions: permissions, unrelated: "DO-NOT-DISPLAY" },
+            content: [{ type: "content", content: { type: "text", text: "Enable network access" } }],
+          });
           const ok = res.outcome.outcome === "selected" && res.outcome.optionId === "allow";
           await say(ok ? "WROTE-FOO" : "BLOCKED-FOO");
           return { stopReason: "end_turn" };

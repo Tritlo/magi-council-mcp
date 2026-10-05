@@ -634,10 +634,9 @@ export class AcpSession {
     this.conn = conn;
 
     try {
-      // Advertise a read-only client filesystem so agents can read files through
-      // us (sandboxed to the workspace) instead of shelling out — the only way a
-      // command-reader like Codex can read in read-only council mode. We do NOT
-      // advertise writeTextFile: writes still go through the guardian.
+      // Offer scoped reads to adapters that use the ACP client filesystem.
+      // Codex uses native shell reads within its restricted mode.
+      // Do not advertise writeTextFile; write approvals use the guardian.
       await conn.initialize({
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: { fs: { readTextFile: true, writeTextFile: false } },

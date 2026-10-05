@@ -14,5 +14,5 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts", "hooks/**/*.ts"]
+  "include": ["src/**/*.ts", "hooks/**/*.ts", "research/refinement-spike/*.ts"]
 }
