@@ -1,27 +1,26 @@
 # magi-council-mcp
 
 A small MCP server that lets a coding agent **consult other frontier models
-mid-task** — **Codex**, **GitHub Copilot**, **Grok (xAI)**, and
+mid-task** — **Codex**, **Gemini (Google Antigravity)**, **Grok (xAI)**, and
 **Claude (Anthropic)** — for a second opinion, plan review, diff review,
 brainstorming, exploration, media generation, and a **Magi council**. The council
 uses independent drafts, explicit self-critique, and revision before aggregation.
 This protocol follows the approach in
 [Refining Over Resampling: Test-Time Self-Correction for LLM Reasoning](https://arxiv.org/html/2608.05643v1).
 
-The default council roster is **Claude, Codex, and Grok**. **Copilot is available
-but opt-in**: add `copilot` to `MAGI_COUNCIL_MEMBERS` to enable it. The server is
+The default council roster is **Claude, Codex, Gemini, and Grok**. The server is
 **symmetric**: whichever agent launches it is the *host*
 (the lead, who synthesizes) and — when
 recognized — is **auto-excluded from its own council**, so each host gets the
-other roster members as active advisors. An unrecognized host gets the full roster (and
+**other three** as active advisors (three council members plus the host asking the
+questions). An unrecognized host gets the full roster (and
 may include itself) until you set
 `MAGI_COUNCIL_EXCLUDE` (see [Symmetric council](#symmetric-council--host-detection)).
 
 Internally it's an [ACP](https://agentclientprotocol.com) *client* that spawns each
 non-host member's ACP server —
 [`codex-acp`](https://www.npmjs.com/package/@agentclientprotocol/codex-acp),
-[`@github/copilot`](https://www.npmjs.com/package/@github/copilot) in native
-`--acp` mode, `grok agent stdio`, and
+`agy acp`, `grok agent stdio`, and
 [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) —
 Direct advisor tools keep one persistent session per member per workspace.
 Each council stage uses isolated sessions with explicit previous artifacts.
@@ -39,7 +38,7 @@ Each council stage uses isolated sessions with explicit previous artifacts.
 | Tool | Use it to… |
 |------|-----------|
 | `ask_codex` / `codex_reply` | a second opinion from Codex, and follow-ups |
-| `ask_copilot` / `copilot_reply` | a second opinion from GitHub Copilot (when enabled in the roster) |
+| `ask_gemini` / `gemini_reply` | a second opinion from Gemini (Google Antigravity), and follow-ups |
 | `ask_claude` / `claude_reply` | a second opinion from Claude (generalist coder) |
 | `ask_grok` / `grok_reply` | a second opinion from Grok — live web/X search, current events |
 | `grok_generate` | generate an image or short video with Grok, saved into the workspace |
@@ -58,7 +57,7 @@ Each council stage uses isolated sessions with explicit previous artifacts.
 | Tool | Use it to… |
 |------|-----------|
 | `delegate_codex` | hand Codex an implementation task on its own named session (default mode `agent`: sandboxed writes/commands) |
-| `delegate_copilot` | hand Copilot an implementation task on its own named session (when enabled in the roster) |
+| `delegate_gemini` | hand Gemini an implementation task on its own named session (`agy acp` modes: `default` / `accept-edits` / `auto` / `plan`) |
 | `delegate_claude` | hand Claude an implementation task (default mode `auto`: classifier-judged permissions) |
 | `delegate_grok` | hand Grok an implementation task (no ACP modes; may write without asking — review its diff) |
 
@@ -83,12 +82,12 @@ the active advisors.
 
 ### Symmetric council & host detection
 
-The council is **symmetric** — Claude, Codex, Copilot, or Grok can host it. On MCP
+The council is **symmetric** — Claude, Codex, Gemini, or Grok can host it. On MCP
 `initialize`, the server reads the connecting client's identity and **excludes that
 member** (the host) from the roster, leaving the active advisors. Resolution order:
 
-1. **`MAGI_COUNCIL_EXCLUDE`** (`claude`|`codex`|`copilot`|`grok`, startup only) — explicit, wins.
-2. **`clientInfo.name`** sent at `initialize` — matched against those four ids.
+1. **`MAGI_COUNCIL_EXCLUDE`** (`claude`|`codex`|`gemini`|`grok`, startup only) — explicit, wins.
+2. **`clientInfo.name`** sent at `initialize` — matched against those four ids (including `antigravity` / `agy` for `gemini`).
 3. **unknown** — if neither resolves, the full roster participates (one may be
    the host). `status` and `consult` flag this, so an unrecognized host knows it
    can set the env var to exclude itself.
@@ -100,7 +99,7 @@ MCP config — see [Other agents](#giving-other-agents-the-council).
 
 ### Debate, not one-shot
 
-The single-advisor tools (`ask_codex`/`ask_copilot`/`ask_grok`/`ask_claude`, `review_plan`,
+The single-advisor tools (`ask_codex`/`ask_gemini`/`ask_grok`/`ask_claude`, `review_plan`,
 `review_diff`, `brainstorm`) frame each exchange as a short debate: the advisor
 pushes back, and ends every reply with a `VERDICT: CONSENSUS — …` or
 `VERDICT: OPEN — …` line. When it's `OPEN`, push back with that advisor's reply
@@ -234,18 +233,18 @@ For **image/video generation**, use
 ### Permission modes (advisors restricted, delegates native)
 
 Members expose their own permission modes over ACP (codex: `read-only` / `agent` /
-`agent-full-access`; claude: `auto` / `default` / `acceptEdits` / …; Copilot and
-Grok may report no per-session mode selector),
+`agent-full-access`; claude: `auto` / `default` / `acceptEdits` / …; gemini:
+`default` / `accept-edits` / `auto` / `plan`; Grok reports no per-session mode selector),
 discovered at session start like models and efforts — `available_councilors` lists them.
 **Advisor sessions are pinned to restricted modes where verified** (codex →
-`read-only`, claude → `default`) so an agent's permissive default can't self-approve writes behind the
+`read-only`, claude → `default`, gemini → `default`) so an agent's permissive default can't self-approve writes behind the
 guardian's back; if a pin can't apply, `status` shows a ⚠️ warning. **Delegate
 sessions use the member's native mode** — the agent's default, or a per-call
 `mode` (sticky for that delegate's session). Whatever a mode still escalates
 (network, out-of-workspace paths) pauses for the host via `permit` — the host
 stays the guardian for risky actions. But the permit fallback only gates what an
 agent chooses to surface. Codex ACP 2.1.1 restores approval requests in `read-only`
-mode. Grok has been observed writing workspace files without asking. Verify mode
+mode. `agy acp` `default` mode follows the user's Antigravity CLI permission settings. Grok has been observed writing workspace files without asking. Verify mode
 behavior when updating a harness, and review a delegate's diff.
 
 ### Permissions: the host is the guardian
@@ -261,7 +260,7 @@ commands, writes, network, out-of-workspace reads — comes back to the host. Th
 
 All advisors share this guardian. Since each has its own session, **more than one
 can be paused at once** (e.g. an advisor and a delegate); `permit` takes an
-optional **`member`** (`claude`|`codex`|`copilot`|`grok`) — inferred
+optional **`member`** (`claude`|`codex`|`gemini`|`grok`) — inferred
 when only one is pending, required when several are. (The Magi council never
 suspends — it runs read-only, resolving permissions inline — so it never leaves a
 pending permit.)
@@ -331,10 +330,8 @@ advisor that no longer has the thread. Re-establish context (or `reset` and star
   fetched on demand via `bunx`, pinned to an exact version (it releases near-daily
   and drives Codex's experimental `codex app-server` protocol underneath — the pin
   keeps both sides in lockstep); bump the version in `src/config.ts` deliberately.
-- When Copilot is in the roster, it uses the official [`@github/copilot`](https://www.npmjs.com/package/@github/copilot)
-  CLI in native ACP mode, fetched via `bunx` and pinned in `src/config.ts`.
-  Authenticate once with `bunx @github/copilot@1.0.91 login`, or set
-  `COPILOT_GITHUB_TOKEN`.
+- Gemini uses the Antigravity CLI (`agy`) on your `PATH` (`agy acp`). Run
+  `agy acp --login` (or launch `agy`) to authenticate.
 - Grok uses the [Grok CLI](https://x.ai) on your `PATH`. Run `grok login` and
   confirm that the account has available usage.
 - For Claude's seat on the council (only when the host **isn't** Claude):
@@ -402,7 +399,7 @@ resets the members for both; that only discards advisory context, never corrupts
 
 ### Giving other agents the council
 
-Because the host is auto-excluded, the same server works for **Codex, Copilot, or Grok**
+Because the host is auto-excluded, the same server works for **Codex, Gemini (`agy`), or Grok**
 as host — register it in their MCP config the same way. The server tries to detect
 the host from the client's `initialize` identity, but detection isn't guaranteed,
 so **set `MAGI_COUNCIL_EXCLUDE` explicitly** for non-Claude hosts, e.g. in a Codex
@@ -413,10 +410,18 @@ host's MCP server env:
   "env": { "MAGI_COUNCIL_EXCLUDE": "codex", "MAGI_COUNCIL_WORKSPACE": "/ABS/PATH/your-project" } }
 ```
 
-With the default roster, that Codex host gets Claude + Grok as its council
-(`ask_claude`, `ask_grok`, `consult`). Add Copilot to `MAGI_COUNCIL_MEMBERS` to
-include `ask_copilot`. Check
+With the default roster, that Codex host gets Gemini + Grok + Claude as its council
+(`ask_gemini`, `ask_grok`, `ask_claude`, `consult`). Check
 `status` to confirm the resolved host and active council.
+
+For Antigravity CLI (`agy`), register it with:
+
+```bash
+agy mcp add \
+  --env MAGI_COUNCIL_EXCLUDE=gemini \
+  --env MAGI_COUNCIL_WORKSPACE=/ABS/PATH/your-project \
+  magi-council -- /ABS/PATH/TO/bun run /ABS/PATH/magi-council-mcp/src/index.ts
+```
 
 For Codex CLI/IDE specifically, either add it with the CLI:
 
@@ -456,11 +461,11 @@ workspace env var.
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `MAGI_COUNCIL_WORKSPACE` | cwd | Absolute path the members are scoped to; the base for every guardian check. |
-| `MAGI_COUNCIL_MEMBERS` | `codex,grok,claude` | Comma-separated council roster. Member ids: `claude`, `codex`, `copilot`, and `grok`. Input order does not change canonical voice order. |
-| `MAGI_COUNCIL_EXCLUDE` | (auto) | Force the host member to exclude (`claude`\|`codex`\|`copilot`\|`grok`). Wins over clientInfo detection; recommended for non-Claude hosts. |
+| `MAGI_COUNCIL_MEMBERS` | `codex,gemini,grok,claude` | Comma-separated council roster. Member ids: `claude`, `codex`, `gemini`, and `grok`. Input order does not change canonical voice order. |
+| `MAGI_COUNCIL_EXCLUDE` | (auto) | Force the host member to exclude (`claude`\|`codex`\|`gemini`\|`grok`). Wins over clientInfo detection; recommended for non-Claude hosts. |
 | `MAGI_COUNCIL_CLAUDE_ACP_COMMAND` | `bunx @agentclientprotocol/claude-agent-acp@0.86.0` | How to launch Claude's ACP server (used only when Claude isn't the host). |
 | `MAGI_COUNCIL_CODEX_ACP_COMMAND` | `bunx @agentclientprotocol/codex-acp@2.1.1` | How to launch Codex's ACP server. |
-| `MAGI_COUNCIL_COPILOT_ACP_COMMAND` | `bunx @github/copilot@1.0.91 --acp` | How to launch GitHub Copilot CLI's native ACP server. |
+| `MAGI_COUNCIL_GEMINI_ACP_COMMAND` | `agy acp` | How to launch Gemini's ACP server (Google Antigravity CLI). |
 | `MAGI_COUNCIL_GROK_ACP_COMMAND` | `grok agent stdio` | How to launch Grok's ACP server. |
 | `MAGI_COUNCIL_ALLOW_EXTERNAL_READS` | off | Let a member read outside the workspace + use network fetch. |
 | `MAGI_COUNCIL_ALLOW_WRITES` | off | Let a member edit/delete/move files inside the workspace. |
@@ -487,7 +492,7 @@ in [`src/permissions.ts`](src/permissions.ts).
 src/config.ts       env → Config + per-member MemberSpecs + host-exclude override
 src/permissions.ts  guardianDecision — the pure permission policy
 src/council.ts      pure council-selection logic (selectCouncil)
-src/prompts.ts      host-parameterized prompts per tool (Codex/Copilot/Claude/Grok, magi)
+src/prompts.ts      host-parameterized prompts per tool (Codex/Gemini/Claude/Grok, magi)
 src/session.ts      AcpSession — ACP client: spawn a member, selector config, persistent session, streaming ask()
 src/reset.ts        per-workspace reset-nonce path (shared by server + hook)
 src/log.ts          per-turn debug log (stderr summary + optional JSONL file)

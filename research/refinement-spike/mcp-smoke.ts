@@ -11,7 +11,7 @@ await writeFile(join(workspace, "probe.txt"), marker);
 const client = new Client({ name: "magi-compatibility-smoke", version: "1.0.0" });
 const transport = new StdioClientTransport({
   command: "bun", args: [resolve("src/index.ts")], stderr: "pipe",
-  env: { ...getDefaultEnvironment(), MAGI_COUNCIL_WORKSPACE: workspace, MAGI_COUNCIL_MEMBERS: "codex,claude,grok,copilot" },
+  env: { ...getDefaultEnvironment(), MAGI_COUNCIL_WORKSPACE: workspace, MAGI_COUNCIL_MEMBERS: "codex,gemini,grok,claude" },
 });
 try {
   await client.connect(transport);

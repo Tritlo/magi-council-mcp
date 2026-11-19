@@ -3,7 +3,7 @@
  * A scripted ACP *agent* for tests. It's a real subprocess speaking ACP over
  * stdio, so {@link AcpSession} can be exercised end-to-end and deterministically
  * (real spawn, real ndjson framing, real permission round-trips) without a live
- * Codex/Copilot/Claude/Grok. The behavior is chosen by `--scenario <name>`.
+ * Codex/Gemini/Claude/Grok. The behavior is chosen by `--scenario <name>`.
  *
  * It must never write to stdout except ACP framing (stdout is the protocol
  * channel); diagnostics go to stderr.

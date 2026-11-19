@@ -1,13 +1,13 @@
 import { resolve } from "node:path";
 
 /** Every supported council member. The configured host is excluded at runtime. */
-export type MemberId = "claude" | "codex" | "copilot" | "grok";
+export type MemberId = "claude" | "codex" | "gemini" | "grok";
 
 /** All member ids, in a stable order used for iteration and voice ordering. */
-export const MEMBER_IDS: MemberId[] = ["codex", "copilot", "grok", "claude"];
+export const MEMBER_IDS: MemberId[] = ["codex", "gemini", "grok", "claude"];
 
-/** Default roster. Copilot stays available as an explicit opt-in member. */
-const DEFAULT_MEMBER_IDS: MemberId[] = ["codex", "grok", "claude"];
+/** Default roster: all four frontier model members. */
+const DEFAULT_MEMBER_IDS: MemberId[] = [...MEMBER_IDS];
 
 /**
  * One council member reachable over its own `codex-acp`-style ACP subprocess.
@@ -33,7 +33,7 @@ export interface MemberSpec {
 /**
  * Runtime configuration, all sourced from the environment so the server stays
  * a pure stdio process that an agent can launch with `claude mcp add` (or the
- * equivalent for Codex/Copilot/Grok).
+ * equivalent for Codex/Gemini/Grok).
  *
  * The three `allow*` flags are the guardian-mode expansion switches, shared by
  * all members: every one defaults to `false`, so out of the box a member may
@@ -44,8 +44,8 @@ export interface Config {
   claude: MemberSpec;
   /** Codex — a council member. */
   codex: MemberSpec;
-  /** GitHub Copilot — a council member. */
-  copilot: MemberSpec;
+  /** Gemini (Google Antigravity) — a council member. */
+  gemini: MemberSpec;
   /** Grok (xAI) — a council member, strong at live web/X search. */
   grok: MemberSpec;
   /** Enabled council roster, before the host is excluded. */
@@ -159,13 +159,13 @@ export function loadConfig(): Config {
       ["bunx", "@agentclientprotocol/codex-acp@2.1.1"],
       "run `/codex:setup` or `codex login`",
     ),
-    copilot: memberSpec(
-      "copilot",
-      "Copilot",
-      "GitHub Copilot",
-      "MAGI_COUNCIL_COPILOT_ACP_COMMAND",
-      ["bunx", "@github/copilot@1.0.91", "--acp"],
-      "run `bunx @github/copilot@1.0.91 login` or set COPILOT_GITHUB_TOKEN",
+    gemini: memberSpec(
+      "gemini",
+      "Gemini",
+      "Gemini",
+      "MAGI_COUNCIL_GEMINI_ACP_COMMAND",
+      ["agy", "acp"],
+      "run `agy acp --login` or `agy`",
     ),
     grok: memberSpec(
       "grok",

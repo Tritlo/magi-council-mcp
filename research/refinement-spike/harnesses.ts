@@ -18,7 +18,7 @@ const config = { ...loadConfig(), workspaceRoot, turnTimeoutMs: 60_000 };
 
 const results = await Promise.all(members.map(async (value) => {
   const id = value as MemberId;
-  const pinnedMode = id === "codex" ? "read-only" : id === "claude" ? "default" : undefined;
+  const pinnedMode = id === "codex" ? "read-only" : id === "claude" || id === "gemini" ? "default" : undefined;
   const session = new AcpSession(config, config[id], { pinnedMode });
   try {
     const inventory = await session.availableSelectors(AbortSignal.timeout(90_000));

@@ -27,9 +27,9 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
   return {
     claude: spec("claude", "Claude"),
     codex: spec("codex", "Codex"),
-    copilot: spec("copilot", "Copilot"),
+    gemini: spec("gemini", "Gemini"),
     grok: spec("grok", "Grok"),
-    memberIds: ["codex", "grok", "claude"],
+    memberIds: ["codex", "gemini", "grok", "claude"],
     workspaceRoot: process.cwd(),
     allowExternalReads: false,
     allowWrites: false,

@@ -1,7 +1,7 @@
 {
   "name": "magi-council-mcp",
   "version": "0.3.0",
-  "description": "MCP server that lets coding agents consult Codex, Grok, Claude, and optional GitHub Copilot for review, co-planning, and host-mediated deliberation.",
+  "description": "MCP server that lets coding agents consult Codex, Gemini, Grok, and Claude for review, co-planning, and host-mediated deliberation.",
   "type": "module",
   "bin": {
     "magi-council-mcp": "src/index.ts"

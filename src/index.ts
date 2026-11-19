@@ -24,7 +24,7 @@ import {
 import {
   askClaudePrompt,
   askCodexPrompt,
-  askCopilotPrompt,
+  askGeminiPrompt,
   askGrokPrompt,
   brainstormPrompt,
   delegatePrompt,
@@ -56,7 +56,7 @@ const memberIds = config.memberIds;
 const specs: Record<MemberId, MemberSpec> = {
   claude: config.claude,
   codex: config.codex,
-  copilot: config.copilot,
+  gemini: config.gemini,
   grok: config.grok,
 };
 
@@ -68,14 +68,14 @@ const specs: Record<MemberId, MemberSpec> = {
  * sessions are NOT pinned; they use the agent's native modes (default or per-call
  * `mode`).
  */
-const ADVISOR_MODE: Partial<Record<MemberId, string>> = { codex: "read-only", claude: "default" };
+const ADVISOR_MODE: Partial<Record<MemberId, string>> = { codex: "read-only", claude: "default", gemini: "default" };
 const advisorSession = (id: MemberId): AcpSession =>
   new AcpSession(config, specs[id], { pinnedMode: ADVISOR_MODE[id] });
 
 const sessions: Record<MemberId, AcpSession> = {
   claude: advisorSession("claude"),
   codex: advisorSession("codex"),
-  copilot: advisorSession("copilot"),
+  gemini: advisorSession("gemini"),
   grok: advisorSession("grok"),
 };
 
@@ -102,7 +102,7 @@ function detectFromClientInfo(name: string | undefined): MemberId | undefined {
   if (!name) return undefined;
   if (/claude/i.test(name)) return "claude";
   if (/codex/i.test(name)) return "codex";
-  if (/copilot/i.test(name)) return "copilot";
+  if (/gemini|antigravity|\bagy\b/i.test(name)) return "gemini";
   if (/grok/i.test(name)) return "grok";
   return undefined;
 }
@@ -315,7 +315,12 @@ const effortField = {
 };
 const modelsField = {
   models: z
-    .object({ claude: modelValue.optional(), codex: modelValue.optional(), copilot: modelValue.optional(), grok: modelValue.optional() })
+    .object({
+      claude: modelValue.optional(),
+      codex: modelValue.optional(),
+      gemini: modelValue.optional(),
+      grok: modelValue.optional(),
+    })
     .optional()
     .describe(
       "Optional per-member ACP model selector values/names for a council fan-out, e.g. { codex: \"...\", claude: \"...\" }. Values come from available_councilors.",
@@ -323,7 +328,12 @@ const modelsField = {
 };
 const effortsField = {
   efforts: z
-    .object({ claude: modelValue.optional(), codex: modelValue.optional(), copilot: modelValue.optional(), grok: modelValue.optional() })
+    .object({
+      claude: modelValue.optional(),
+      codex: modelValue.optional(),
+      gemini: modelValue.optional(),
+      grok: modelValue.optional(),
+    })
     .optional()
     .describe(
       "Optional per-member ACP thought_level (reasoning effort) selector values/names for a council fan-out, e.g. { codex: \"high\", claude: \"medium\" }. Values come from available_councilors.",
@@ -340,7 +350,12 @@ const modeField = {
 const server = new McpServer({ name: "magi-council", version: "0.3.0" });
 
 // Tool handles per member, so the host's direct tools can be removed once known.
-const memberTools: Record<MemberId, Array<{ remove(): void }>> = { claude: [], codex: [], copilot: [], grok: [] };
+const memberTools: Record<MemberId, Array<{ remove(): void }>> = {
+  claude: [],
+  codex: [],
+  gemini: [],
+  grok: [],
+};
 
 // --- Codex tools ----------------------------------------------------------
 
@@ -431,16 +446,16 @@ memberTools.claude.push(
   ),
 );
 
-// --- Copilot tools --------------------------------------------------------
+// --- Gemini tools ---------------------------------------------------------
 
-memberTools.copilot.push(
+memberTools.gemini.push(
   server.registerTool(
-    "ask_copilot",
+    "ask_gemini",
     {
       description:
-        "Ask GitHub Copilot directly for an independent second opinion. Continue with `copilot_reply`.",
+        "Ask Gemini (Google Antigravity) directly for an independent second opinion. Continue with `gemini_reply`.",
       inputSchema: {
-        question: z.string().describe("The specific question or task to put to Copilot."),
+        question: z.string().describe("The specific question or task to put to Gemini."),
         context: z.string().optional().describe("Optional background, constraints, or relevant snippets."),
         ...modelField,
         ...effortField,
@@ -448,29 +463,26 @@ memberTools.copilot.push(
       },
     },
     ({ question, context, time, model, effort }, extra) =>
-      isActive("copilot")
-        ? ask("copilot", askCopilotPrompt(hostName(), question, context), extra, "ask_copilot", time, model, effort)
-        : inactiveResult("copilot"),
+      isActive("gemini")
+        ? ask("gemini", askGeminiPrompt(hostName(), question, context), extra, "ask_gemini", time, model, effort)
+        : inactiveResult("gemini"),
   ),
-);
-
-memberTools.copilot.push(
   server.registerTool(
-    "copilot_reply",
+    "gemini_reply",
     {
       description:
-        "Continue the conversation with Copilot on the SAME session (it remembers the thread). Use to push back on or follow up Copilot's last answer.",
+        "Continue the conversation with Gemini on the SAME session (it remembers the thread). Use to push back on or follow up Gemini's last answer.",
       inputSchema: {
-        message: z.string().describe("Your rebuttal, counter-point, or follow-up question for Copilot."),
+        message: z.string().describe("Your rebuttal, counter-point, or follow-up question for Gemini."),
         ...modelField,
         ...effortField,
         ...timeField,
       },
     },
     ({ message, time, model, effort }, extra) =>
-      isActive("copilot")
-        ? ask("copilot", replyPrompt(hostName(), message), extra, "copilot_reply", time, model, effort)
-        : inactiveResult("copilot"),
+      isActive("gemini")
+        ? ask("gemini", replyPrompt(hostName(), message), extra, "gemini_reply", time, model, effort)
+        : inactiveResult("gemini"),
   ),
 );
 
@@ -683,15 +695,15 @@ memberTools.claude.push(
   ),
 );
 
-memberTools.copilot.push(
+memberTools.gemini.push(
   server.registerTool(
-    "delegate_copilot",
+    "delegate_gemini",
     {
       description:
-        "Hand GitHub Copilot an implementation task as your delegate coder on its own named session; it reports back when done. Run several delegates concurrently with different `name`s; re-call with the same `name` to steer. Permissions follow Copilot CLI's native ACP behavior; whatever it escalates pauses 🔐 for your judgement via `permit` — review its diff like any delegate's.",
+        "Hand Gemini (Google Antigravity) an implementation task as your delegate coder on its own named session; it reports back when done (outcome, files changed, verification, blockers). Run several delegates concurrently with different `name`s; re-call with the same `name` to steer. Permissions follow `agy acp` modes (`default`, `accept-edits`, `auto`, `plan`) and your CLI permission settings; pass `mode` (e.g. `auto` or `accept-edits`) to change, and whatever it escalates pauses 🔐 for your judgement via `permit` — review its diff like any delegate's.",
       inputSchema: delegateInput,
     },
-    (args, extra) => runDelegate("copilot", args, extra),
+    (args, extra) => runDelegate("gemini", args, extra),
   ),
 );
 
@@ -964,7 +976,7 @@ async function councilTurn(
 function unknownHostWarning(): string | undefined {
   const r = resolveHost();
   return r.source === "unknown"
-    ? `⚠️ Host not recognized (clientInfo: ${r.rawClient ?? "none"}); all roster members are participating, so one of these voices may be you. Set \`MAGI_COUNCIL_EXCLUDE=claude|codex|copilot|grok\` to exclude yourself.`
+    ? `⚠️ Host not recognized (clientInfo: ${r.rawClient ?? "none"}); all roster members are participating, so one of these voices may be you. Set \`MAGI_COUNCIL_EXCLUDE=${[...MEMBER_IDS].sort().join("|")}\` to exclude yourself.`
     : undefined;
 }
 

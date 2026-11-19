@@ -8,18 +8,57 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 test("selectCouncil: no request → the default active council", () => {
-  expect(selectCouncil(undefined, ["codex", "copilot", "grok"])).toEqual(["codex", "copilot", "grok"]);
-  expect(selectCouncil([], ["codex", "copilot", "grok"])).toEqual(["codex", "copilot", "grok"]);
+  expect(selectCouncil(undefined, ["codex", "gemini", "grok"])).toEqual(["codex", "gemini", "grok"]);
+  expect(selectCouncil([], ["codex", "gemini", "grok"])).toEqual(["codex", "gemini", "grok"]);
 });
 
 test("selectCouncil: explicit request is honored, deduped, in canonical (active) order", () => {
-  expect(selectCouncil(["grok"], ["codex", "copilot", "grok"])).toEqual(["grok"]);
-  expect(selectCouncil(["grok", "codex", "grok"], ["codex", "copilot", "grok"])).toEqual(["codex", "grok"]);
+  expect(selectCouncil(["grok"], ["codex", "gemini", "grok"])).toEqual(["grok"]);
+  expect(selectCouncil(["grok", "codex", "grok"], ["codex", "gemini", "grok"])).toEqual(["codex", "grok"]);
 });
 
 test("selectCouncil: the host can't be made to consult itself (intersected with active)", () => {
   // Claude is host → not in active; naming it is simply dropped.
-  expect(selectCouncil(["claude", "codex"], ["codex", "copilot", "grok"])).toEqual(["codex"]);
+  expect(selectCouncil(["claude", "codex"], ["codex", "gemini", "grok"])).toEqual(["codex"]);
+});
+
+test.each([
+  { clientName: "claude-code", expectedHost: "Claude", expectedCouncil: ["Codex", "Gemini", "Grok"], excludedId: "claude" },
+  { clientName: "codex-mcp-client", expectedHost: "Codex", expectedCouncil: ["Gemini", "Grok", "Claude"], excludedId: "codex" },
+  { clientName: "antigravity-cli", expectedHost: "Gemini", expectedCouncil: ["Codex", "Grok", "Claude"], excludedId: "gemini" },
+  { clientName: "agy", expectedHost: "Gemini", expectedCouncil: ["Codex", "Grok", "Claude"], excludedId: "gemini" },
+  { clientName: "grok-cli", expectedHost: "Grok", expectedCouncil: ["Codex", "Gemini", "Claude"], excludedId: "grok" },
+])("default roster gives three active council members plus the host ($clientName)", async ({ clientName, expectedHost, expectedCouncil, excludedId }) => {
+  const client = new Client({ name: clientName, version: "1.0.0" });
+  const env = { ...getDefaultEnvironment() };
+  delete env.MAGI_COUNCIL_MEMBERS;
+  delete env.MAGI_COUNCIL_EXCLUDE;
+  const transport = new StdioClientTransport({
+    command: "bun",
+    args: [resolve("src/index.ts")],
+    stderr: "pipe",
+    env,
+  });
+  try {
+    await client.connect(transport);
+    const status = await client.callTool({ name: "status", arguments: {} });
+    const text = (status.content as Array<{ text: string }>)[0]!.text;
+    expect(text).toContain(`host: ${expectedHost} (excluded; source=clientInfo`);
+    expect(text).toContain("roster: Codex, Gemini, Grok, Claude");
+    expect(text).toContain(`council: ${expectedCouncil.join(", ")}`);
+
+    const tools = (await client.listTools()).tools.map((t) => t.name);
+    expect(tools).not.toContain(`ask_${excludedId}`);
+    expect(tools).not.toContain(`${excludedId}_reply`);
+    expect(tools).not.toContain(`delegate_${excludedId}`);
+    for (const advisor of ["codex", "gemini", "grok", "claude"].filter((id) => id !== excludedId)) {
+      expect(tools).toContain(`ask_${advisor}`);
+      expect(tools).toContain(`${advisor}_reply`);
+      expect(tools).toContain(`delegate_${advisor}`);
+    }
+  } finally {
+    await client.close();
+  }
 });
 
 test.each(["answer", "truncated"])("consult isolates refinement stages and rejects incomplete artifacts (%s)", async (scenario) => {

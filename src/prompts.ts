@@ -1,7 +1,7 @@
 /**
  * Prompt builders for each council tool.
  *
- * Members (Codex, GitHub Copilot, Grok, and Claude) respond best to compact, block-structured
+ * Members (Codex, Gemini, Grok, and Claude) respond best to compact, block-structured
  * prompts with stable XML tags: one task, an explicit output contract, and only
  * the grounding/verification blocks the task needs. These templates follow the
  * Codex prompting recipes and the GPT-5.2 prompting guide (default to tight
@@ -171,10 +171,10 @@ export function delegateSteerPrompt(host: string, message: string, context?: str
     .join("\n\n");
 }
 
-/** A direct second opinion from Copilot (the `ask_copilot` endpoint). */
-export function askCopilotPrompt(host: string, question: string, context?: string): string {
+/** A direct second opinion from Gemini (the `ask_gemini` endpoint). */
+export function askGeminiPrompt(host: string, question: string, context?: string): string {
   return assemble(
-    "GitHub Copilot",
+    "Gemini",
     host,
     `<task>\n${question.trim()}\n</task>`,
     withContext(context),

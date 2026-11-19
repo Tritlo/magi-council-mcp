@@ -1,0 +1,3 @@
+# 0020 — Replace Copilot with Gemini via `agy acp`
+
+Replace the opt-in Copilot member (ADR 0019) with Gemini (Google Antigravity) through `agy acp` (`MAGI_COUNCIL_GEMINI_ACP_COMMAND`), making the four supported members — `codex`, `gemini`, `grok`, and `claude` — the default council roster. Copilot is not a distinct model family and its ACP endpoint was unverified in live checks (HTTP 403). With four frontier model families in the roster and the connecting host excluded, any recognized Claude, Codex, Gemini (`gemini`/`antigravity`/`agy`), or Grok host gets the other three as active advisors — three council members plus the host asking the questions. Advisor sessions pin `agy acp` to `default` mode, which asks per the user's Antigravity CLI permission settings.

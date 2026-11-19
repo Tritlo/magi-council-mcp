@@ -22,4 +22,5 @@
 | [0016](0016-host-mediated-deliberation.md) | Host-mediated deliberation (remove autonomous rounds) | Remove autonomous `rounds`/`until_settled`: `consult` is one round, and the host drives follow-up rounds with `my_take`, superseding multi-round 0008/0010. |
 | [0017](0017-acp-model-selection.md) | ACP model selection | Discover member model selectors via `available_councilors` and apply per-call `model`/`models` at session level. |
 | [0018](0018-delegate-mode.md) | Delegate mode: members as managed coders | Add named `delegate_*` coder sessions with native ACP modes, concurrent delegates, explicit permit routing, and reset cleanup. |
-| [0019](0019-add-optional-copilot-member.md) | Add an optional Copilot member | Add Copilot through its native ACP mode; keep Claude, Codex, and Grok in the default roster. |
+| [0019](0019-add-optional-copilot-member.md) | Add an optional Copilot member | Superseded by 0020: added optional Copilot (`--acp`) outside the default roster, keep `MAGI_COUNCIL_MEMBERS` roster filtering. |
+| [0020](0020-add-gemini-member.md) | Replace Copilot with Gemini via `agy acp` | Remove Copilot and add Gemini via `agy acp` to the default roster so each recognized host gets the other three members as its council. |
